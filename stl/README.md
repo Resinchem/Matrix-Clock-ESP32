@@ -1,0 +1,1 @@
+This folder contains the optional 3D models as shown in the video and blog.  These enclosures are not required for functionality.

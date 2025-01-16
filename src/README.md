@@ -1,0 +1,1 @@
+This folder contains the source code for the project.  You do not need the source code to install and use the project.  If you only want to install the firmware, download and install the compiled .bin file from the latest release assets.
