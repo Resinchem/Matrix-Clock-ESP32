@@ -8,6 +8,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - Time can be 12/24 (military) hour
   - Inside or outside temperature... or both!
   - Auto-syncing to NTP server or manually set the date/time
+  - Optionally switch to showning the time as a "binary clock"
 
 - Scoreboard:
   - Customizable team names
