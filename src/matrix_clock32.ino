@@ -1,7 +1,7 @@
 /* =================================================================
  * VERSION 0.10 - MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * January, 2025
- * Version 0.19
+ * Version 0.20
  * By ResinChem Tech - licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        // Suppress FastLED SPI/bitbanged compiler warnings
 #include <FastLED.h>
 
-#define VERSION "v0.19 (ESP32)"
+#define VERSION "v0.20 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -59,7 +59,7 @@
  * these default values.  Values listed here are just starting values
  * before the config file is read (or if it doesn't yet exist immediately after initial onboarding) */
 
-String ntpServer = "us.pool.ntp.org";   // Default server for syncing time
+String ntpServer = "pool.ntp.org";      // Default server for syncing time
 String owmKey = "NA";                   // OpenWeatherMap API key (can be entered after onboarding via web app)
 String owmLat = "39.8083";              // Your Latitude for OpenWeatherMap (can be entered after onboarding
 String owmLong = "-98.555";             // Your Longitude for OpenWeatherMap (can be entered after onboarding)
@@ -2659,6 +2659,229 @@ void changeModeText() {
   page += "</body></html>";
   server.send(200, "text/html", page);
 }
+
+// ----------------------------
+//  Handle API (http) Requests
+// ----------------------------
+void handleApiBrightness(String value) {
+  String result = "Invalid command value received: " + value ;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newBrightness = value.toInt();
+    if ((newBrightness >= 0) && (newBrightness <= 255)) {
+      brightness = newBrightness;
+      result = "Brightness request sent successfully";
+      response = 200;
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiMode(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newMode = value.toInt();
+    if ((newMode >= 0) && (newMode <= 3)) {
+      clockMode = newMode;
+      result = "Display Mode request successfully sent";
+      response = 200;
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiWled(String value) {
+  //Will accept 0/1 or on/off
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  bool turnOn = false;
+  if (value == "on") {
+    turnOn = true;
+    response = 200;
+  } else if (value == "off") {
+    turnOn = false;
+    response = 200;
+  } else if (isValidNumber(value)) {
+    if ((value.toInt()) == 1) {
+      turnOn = true;
+      response = 200;
+    } else if ((value.toInt()) == 0) {
+      turnOn = false;
+      response = 200;
+    }
+  }
+  if (response == 200) {
+    toggleWLED(turnOn);
+    result = ">WLED command sent successfully";
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiCountdown (String value) {
+  //valid params are "start", "stop" and "reset"
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (clockMode == 1) {
+    if (value == "start") {
+      //Only start if not already running
+      if ((!timerRunning && remCountdownMillis > 0)) {
+        endCountDownMillis = millis() + remCountdownMillis;
+        timerRunning = true;
+        response = 200;
+      } else {
+        result = "Countdown is already running or no time remains";
+      }
+    } else if (value == "stop") {
+      timerRunning = false;
+      response = 200;
+    } else if (value == "reset") {
+      timerRunning = false;
+      initCountdownMillis = ((defaultCountdownMin * 60) + defaultCountdownSec) * 1000;
+      countdownMilliSeconds = initCountdownMillis;
+      remCountdownMillis = initCountdownMillis;
+      response = 200;
+    }  
+  } else {
+    result = "System not in required countdown mode";
+  }
+  if (response == 200) {
+    result = "Countdown request sent successfully.</h2>";
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiBuzzer(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int length = value.toInt();
+    if (length >= 0) {
+      if (length > 5) length = 5;
+      soundBuzzer(length * 1000);  //length in milliseconds
+      result = "Buzzer command sent successfully";
+      response = 200;
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiLeftScore(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newScore = value.toInt();
+    if ((newScore >= 0) && (newScore <= 99)) {
+      scoreboardLeft = newScore;
+      response = 200;
+      result = "Left score value sent successfully";
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiRightScore(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newScore = value.toInt();
+    if ((newScore >= 0) && (newScore <= 99)) {
+      scoreboardRight = newScore;
+      response = 200;
+      result = "Right score value sent successfully";
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiTextTop(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (value == "\"\"") {  //clear out value
+    textTop = "";
+    response = 200;
+  } else {
+    textTop = value.substring(0, 6);
+    response = 200;
+  }
+  if (response = 200) {
+    result = "Top text value sent successfully";
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiTextBottom(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (value == "\"\"") {  //clear out value
+    textBottom = "";
+    response = 200;
+  } else {
+    textBottom = value.substring(0, 6);
+    response = 200;
+  }
+  if (response = 200) {
+    result = "Bottom text value sent successfully";
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiTextEffect (String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newEffect = value.toInt();
+    if ((newEffect >= 0) && (newEffect <= 7)) {
+      textEffect = newEffect;
+      response = 200;
+      result = "Text effect request sent successfully";
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiTextSpeed (String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (isValidNumber(value)) {
+    int newSpeed = value.toInt();
+    if ((newSpeed > 0) && (newSpeed <= 10)) {
+      textEffectSpeed = newSpeed;
+      textEffectPeriod = int(1000 / textEffectSpeed);
+      response = 200;
+      result = "Text speed request sent successfully";
+    }
+  }
+  server.send(response, "text/html", result);
+}
+
+void handleApiSystem(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (value == "off") {
+    toggleLEDs(false);
+    response = 200;
+    result = "System command 'off' sent successfully";
+  } else if (value == "on") {
+    toggleLEDs(true);
+    response = 200;
+    result = "System command 'on' sent successfully";
+  } else if (value == "restart") {
+    response = 200;
+    result = "System command 'restart' sent successfully";
+    server.send(response, "text/html", result);  //must send before reboot
+    delay(1000);
+    ESP.restart(); 
+  } else if (value == "otaupdate") {
+    ota_flag = true;
+    ota_time = ota_time_window;
+    ota_time_elapsed = 0;
+    response = 200;
+    result = "System command 'OTA Update' sent successfully";
+  }
+  server.send(response, "text/html", result);
+}
+
 // ----------------------------
 //  Setup Web Handlers
 // -----------------------------
@@ -2704,6 +2927,45 @@ void setupWebHandlers() {
   server.on("/scorereset", handleScoreReset);
   server.on("/textupdate", handleTextEdit);
   server.on("/togglewled", handleWLEDToggle);
+
+  //API URL Calls
+  server.on("/api", HTTP_GET, []()
+    {
+      int queryNum = 0;
+      String queryString = "";
+      for (int i = 0; i < server.args(); i++) {
+        if (server.argName(i) == "brightness") {
+          handleApiBrightness(server.arg(i));
+        } else if (server.argName(i) == "mode") {
+          handleApiMode(server.arg(i));
+        } else if ((server.argName(i) == "wled") && (useWLED)) {
+          handleApiWled(server.arg(i));
+        } else if (server.argName(i) == "countdown") {
+          handleApiCountdown(server.arg(i));
+        } else if (server.argName(i) == "buzzer") {
+          handleApiBuzzer(server.arg(i));
+        } else if (server.argName(i) == "leftscore") {
+          handleApiLeftScore(server.arg(i));
+        } else if (server.argName(i) == "rightscore") {
+          handleApiRightScore(server.arg(i));
+        } else if (server.argName(i) == "texttop") {
+          handleApiTextTop(server.arg(i));
+        } else if (server.argName(i) == "textbottom") {
+          handleApiTextBottom(server.arg(i));
+        } else if (server.argName(i) == "texteffect") {
+          handleApiTextEffect(server.arg(i));
+        } else if (server.argName(i) == "textspeed") {
+          handleApiTextSpeed(server.arg(i));
+        } else if (server.argName(i) == "system") {
+          handleApiSystem(server.arg(i)); 
+        } else {
+          //Just return error to client
+          server.send(400, "text/html", "<h2>Invalid parameter or value passed<h2>");
+        }
+      }
+    }
+
+  );
 
   server.onNotFound(handleNotFound);
   //OTAUpdate via IDE
@@ -4084,6 +4346,13 @@ String getEffectList() {
 // ===========================
 //  Misc Functions
 // ===========================
+boolean isValidNumber(String str){
+  for(byte i=0;i<str.length();i++) {
+    if(isDigit(str.charAt(i))) return true;
+  }
+  return false;
+}
+
 int toggleWLED(bool stateOn) {
   WiFiClient client;
   HTTPClient wled;
