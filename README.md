@@ -31,11 +31,12 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - All display colors and modes are configurable
   - Different selectable fonts for large number displays
   - API permits integration/automation with external systems such as Home Assistant
+  - Simply onboarding and setup.  All options configurable via web app (no coding required for standard build)
 
 - Optional secondary WLED controller
   - Extend the functionality with all the effects and features of full WLED
-  - Auto-switching between controllers.  Show WLED when WLED is on and show the clock when WLED is off.
-  - Microphone for WLED audio-reactive effects.
+  - Auto-switching between controllers.  Show WLED when WLED is on and show the clock when WLED is off
+  - Microphone for WLED audio-reactive effects
 
 This repo and its wiki cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
 
