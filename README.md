@@ -6,7 +6,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
 
 - Time and Temperature:
   - Time can be 12/24 (military) hour
-  - Inside or outside temperature... or both!
+  - Inside or outside temperature (or both) in °F or °C
   - Auto-syncing to NTP server or manually set the date/time
   - Optionally switch to showning the time as a "binary clock"
 
@@ -25,4 +25,20 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - Multiple effects such as alternate flashing, fade-in/fade out, one letter at time, etc.
   - Can set text values via web app or API
 
+- Other Features:
+  - Brightness control
+  - All display colors and modes are configurable
+  - Different selectable fonts for large number displays
+  - See the Wiki for description of all the features
 
+- Optional secondary WLED controller
+  - Extend the functionality with all the effects and features of full WLED
+  - Auto-switching between controllers.  Show WLED when WLED is on and show the clock when WLED is off.
+  - Microphone for WLED audio-reactive effects.
+
+This repo and its wiki cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
+
+YouTube Video (overview): _coming soon_
+
+Written Blog Article (full details): [An ESP32 LED Matrix Clock, Scoreboard, Timer and more with FULL WLED](https://resinchemtech.blogspot.com/2025/01/matrix32.html)
+ 
