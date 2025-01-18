@@ -1,7 +1,7 @@
 /* =================================================================
  * VERSION 0.10 - MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * January, 2025
- * Version 0.20
+ * Version 0.21
  * By ResinChem Tech - licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        // Suppress FastLED SPI/bitbanged compiler warnings
 #include <FastLED.h>
 
-#define VERSION "v0.20 (ESP32)"
+#define VERSION "v0.21 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -51,7 +51,7 @@
 #define ENCODER_B 33      //Rotary Encoder DAT
 #define ENCODER_SW 35     //Rotary Encoder Switch (push button)
 #define NUM_LEDS 400      //Total of 400 LED's if matrix built as shown
-#define MILLI_AMPS 15000  //Update to match <80% max milliamp output of your power suppy (e.g. 20A supply = 16000 max milliamps)
+#define MILLI_AMPS 5000   //Update to match <80% max milliamp output of your power suppy (e.g. 20A supply = 16000 max milliamps). Do not set above 15000.
 
 /* ================ Default Starting Values ================
  * All of these following values can be modified and saved via
@@ -131,6 +131,7 @@ String strMacAddr;              //Formatted string of device mac address
 String baseIPAddress;           //Device assigned IP Address
 bool onboarding = false;        //Will be set to true if no config file or wifi cannot be joined
 long daylightOffsetHours = 0;   //EDT: offset of 1 hour (GMT -4) during DST dates (set in code when time obtained)
+int milliamps = MILLI_AMPS;     //Limited to 5,000 - 25,000 milliamps.
 
 //OTA Variables
 String otaHostName = deviceName + "_OTA";  // Will be updated by device name from onboarding + _OTA
@@ -524,7 +525,7 @@ void readConfigFile() {
         Serial.println("mounted file system");
     #endif
     if (LittleFS.exists("/config.json")) {
-//file exists, reading and loading
+      //file exists, reading and loading
       #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
             Serial.println("reading config file");
       #endif
@@ -546,7 +547,7 @@ void readConfigFile() {
           #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
                     Serial.println("\nparsed json");
           #endif
-                    // Read values here from LittleFS (use defaults for all values in case they don't exist to avoid potential boot loop)
+          // Read values here from LittleFS (use defaults for all values in case they don't exist to avoid potential boot loop)
           //DON'T NEED TO STORE OR RECALL WIFI INFO - Written to flash automatically by library when successful connection.
           deviceName = json["device_name"] | "MatrixClock";
           defaultClockMode = json["clock_mode"] | 0;
@@ -556,6 +557,7 @@ void readConfigFile() {
           } else {
             binaryClock = false;
           }
+          milliamps = json["max_milliamps"] | 5000;
           brightness = json["led_brightness"] | 64;
           numFont = json["num_font"] | 1;
           owmKey = json["owm_key"] | "NA";                        // OpenWeatherMap API Key
@@ -626,6 +628,13 @@ void readConfigFile() {
           wifiHostName = deviceName;
           otaHostName = deviceName + "_OTA";
           clockMode = defaultClockMode;
+          //Assure milliamps between 5000 - 25000
+          if (milliamps > 25000) {
+            milliamps = 25000;
+          } else if (milliamps < 5000) {
+            milliamps = 5000;
+          }
+
           //Default countdown minutes
           if (defaultCountdownMin > 59) defaultCountdownMin = 59;
           if (defaultCountdownSec > 59) defaultCountdownSec = 59;
@@ -668,6 +677,8 @@ void readConfigFile() {
           onboarding = true;
         }
         configFile.close();
+      } else {
+        onboarding = true;
       }
     } else {
       // No config file found - set to onboarding
@@ -682,6 +693,7 @@ void readConfigFile() {
         Serial.println("LittleFS Formatted. Restarting ESP.");
         //ESP.restart();
     #endif
+    onboarding = true;
   }
 }
 
@@ -702,6 +714,7 @@ void writeConfigFile(bool restart_ESP) {
     } else {
       doc["binary_clock"] = 0;
     }
+    doc["max_milliamps"] = milliamps;
     doc["led_brightness"] = brightness;
     doc["num_font"] = numFont;
     doc["owm_key"] = owmKey;
@@ -810,7 +823,7 @@ void webMainPage() {
         <td><label for=\"wifipw\">Password:</label></td>\
         <td><input type=\"password\" name=\"wifipw\" maxlength=\"64\" value=\"";
     mainPage += wifiPW;
-    mainPage += "\"></td></tr><table><br>";
+    mainPage += "\"></td></tr></table><br>";
     mainPage += "<b>Device Name: </b>Please give this device a unique name from all other devices on your network, including other installs of VAR_APP_NAME. ";
     mainPage += "This will be used to set the WiFi and OTA hostnames.<br><br>";
     mainPage += "16 alphanumeric (a-z, A-Z, 0-9) characters max, no spaces:";
@@ -820,7 +833,16 @@ void webMainPage() {
         <td><input type=\"text\" name=\"devicename\" maxlength=\"16\" value=\"";
     mainPage += deviceName;
     mainPage += "\"></td></tr>";
-    mainPage += "</table><br>";
+    mainPage += "</table><br><br>";
+    mainPage += "<b>Max Milliamps: </b>Enter the max current the LEDs are allowed to draw.  This should be about 80% of the rated peak max of the power supply. ";
+    mainPage += "Valid values are 5000 to 25000.  See documentation for more info.<br><br>";
+    mainPage += "<table>\
+        <tr>\
+        <td><labelfor=\"maxmilliamps\">Max Milliamps:</label></td>\
+        <td><input type=\"number\" name=\"maxmilliamps\" min=\"5000\" max=\"25000\" step=\"1\" value=\"";
+    mainPage += String(milliamps);
+    mainPage += "\"></td></tr>";
+    mainPage += "</table><br><br>";
     mainPage += "<input type=\"submit\" value=\"Submit\">";
     mainPage += "</form>";
 
@@ -847,6 +869,7 @@ void webMainPage() {
     mainPage += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
     mainPage += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
     mainPage += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+    mainPage += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
     mainPage += "</table><br>";
     //Standard mode button header
     mainPage += "<H2>Mode Display & Control</H2>";
@@ -1378,6 +1401,7 @@ void webClockPage() {
   message += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
   message += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
   message += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+  message += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
   message += "</table><br>";
   message += "<button type=\"button\" id=\"btnback\" style=\"font-size: 16px; border-radius: 8px; width: 100px; height: 30px;\" onclick=\"location.href = './';\"><< Back</button>";
   message += "<H2>Clock & Temperature Control</H2>\
@@ -1466,6 +1490,7 @@ void webCountdownPage() {
   message += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
   message += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
   message += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+  message += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
   message += "</table><br>";
   message += "<button type=\"button\" id=\"btnback\" style=\"font-size: 16px; border-radius: 8px; width: 100px; height: 30px;\" onclick=\"location.href = './';\"><< Back</button>";
   message += "<H2>Countdown Control</H2>\
@@ -1532,6 +1557,7 @@ void webScorePage() {
   message += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
   message += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
   message += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+  message += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
   message += "</table><br>";
   message += "<button type=\"button\" id=\"btnback\" style=\"font-size: 16px; border-radius: 8px; width: 100px; height: 30px;\" \
     onclick=\"location.href = './';\"><< Back</button>";
@@ -1614,6 +1640,7 @@ void webTextPage() {
   message += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
   message += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
   message += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+  message += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
   message += "</table><br>";
   message += "<button type=\"button\" id=\"btnback\" style=\"font-size: 16px; border-radius: 8px; width: 100px; height: 30px;\" \
     onclick=\"location.href = './';\"><< Back</button>";
@@ -1697,6 +1724,7 @@ void handleOnboard() {
   wifiSSID = server.arg("ssid");
   wifiPW = server.arg("wifipw");
   deviceName = server.arg("devicename");
+  milliamps = server.arg("maxmilliamps").toInt();
   wifiHostName = deviceName;
 
   //Attempt wifi connection
@@ -1763,6 +1791,8 @@ void handleSettingsUpdate() {
     brightness = server.arg("ledbrightness").toInt();
     if (brightness > 255) brightness = 255;
     if (brightness > 5) ledsOn = true;
+    FastLED.setBrightness(brightness);
+
     numFont = server.arg("numfont").toInt();
     //Check for any changes to external temperaure settings and force display update
     if ((server.arg("owmkey") != owmKey) || (server.arg("owmlat") != owmLat) || (server.arg("owmlong") != owmLong) || ((server.arg("tempsymbol").toInt()) != temperatureSymbol)) {
@@ -1895,6 +1925,7 @@ void handleSettingsUpdate() {
     message += "<tr><td>WiFi Network:</td><td>" + WiFi.SSID() + "</td</tr>";
     message += "<tr><td>MAC Address:</td><td>" + strMacAddr + "</td</tr>";
     message += "<tr><td>IP Address:</td><td>" + baseIPAddress + "</td</tr>";
+    message += "<tr><td>Max Milliamps:</td><td>" + String(milliamps) + "</td></tr>";
     message += "</table><br>";
     message += "<button type=\"button\" id=\"btnback\" style=\"font-size: 16px; border-radius: 8px; width: 100px; height: 30px;\" onclick=\"location.href = './';\"><< Back</button>";
 
@@ -2195,6 +2226,7 @@ void handleReset() {
   LittleFS.begin();
   LittleFS.format();
   LittleFS.end();
+  WiFi.disconnect(false, true);
   delay(1000);
   ESP.restart();
 }
@@ -3072,12 +3104,12 @@ void setup() {
         Serial.println("Entering Onboarding setup...");
     #endif
         setupSoftAP();
-      } else if (!setupWifi()) {
+  } else if (!setupWifi()) {
     #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
         Serial.println("Wifi connect failed. Reentering onboarding...");
     #endif
-    onboarding = true;
     setupSoftAP();
+    onboarding = true;
   } else {
     //Connected to Wifi
     //Rest of normal setup here
@@ -3091,110 +3123,120 @@ void setup() {
       delay(100);
     }
   }
-
-  //OTA Updates
-  ArduinoOTA.setHostname(otaHostName.c_str());
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else {  // U_FS
-      type = "filesystem";
-    }
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-  });
-  ArduinoOTA.begin();
-
-  //pinMode(3, FUNCTION_3);
-  //pinMode(1, FUNCTION_3);
+  //Setup hardware GPIO pins
   pinMode(BUZZER_OUTPUT, OUTPUT);
   pinMode(MODE_PIN, INPUT_PULLUP);   //white
   pinMode(GREEN_PIN, INPUT_PULLUP);  //green
   pinMode(RED_PIN, INPUT_PULLUP);    //red
   pinMode(ENCODER_SW, INPUT);        //Rotary button push
   delay(200);
-
+  //Setup LEDs
   FastLED.addLeds<WS2812B, LED_DATA_PIN, GRB>(LEDs, NUM_LEDS);
   FastLED.setDither(false);
   FastLED.setCorrection(TypicalLEDStrip);
-  FastLED.setMaxPowerInVoltsAndMilliamps(5, MILLI_AMPS);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, milliamps);
   FastLED.setBrightness(brightness);
   fill_solid(LEDs, NUM_LEDS, CRGB::Black);
   FastLED.show();
 
-  //I2C Buses:
-  bus1.begin(BUS1_SDA, BUS1_SCL, 100000);  //light level
-  bus2.begin(BUS2_SDA, BUS2_SCL, 100000);  //temp/humidity
+  if (onboarding) {
+    String holdTop = textTop;
+    String holdBottom = textBottom;
+    textTop = "&JOIN";
+    textBottom = "&WIFI";
+    updateText();
+    textTop = holdTop;
+    textBottom = holdBottom;
+    FastLED.show();
+    delay(1000);
 
-  //Initialize time server
-  //sntp_set_sync_interval(300000); //Set to 5 minutes for testing
-  if (autoSync) {
-    sntp_set_sync_interval(autoSyncInterval * 60000);  //convert to ms
-    if (useCustomOffsets) {
-      configTime(gmtOffsetHours * 3600, DST_OFFSET * 3600, ntpServer.c_str());
+  } else {
+    //OTA Updates
+    ArduinoOTA.setHostname(otaHostName.c_str());
+    ArduinoOTA.onStart([]() {
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH) {
+        type = "sketch";
+      } else {  // U_FS
+        type = "filesystem";
+      }
+      // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    });
+    ArduinoOTA.begin();
+
+    //I2C Buses:
+    bus1.begin(BUS1_SDA, BUS1_SCL, 100000);  //light level
+    bus2.begin(BUS2_SDA, BUS2_SCL, 100000);  //temp/humidity
+
+    //Initialize time server
+    //sntp_set_sync_interval(300000); //Set to 5 minutes for testing
+    if (autoSync) {
+      sntp_set_sync_interval(autoSyncInterval * 60000);  //convert to ms
+      if (useCustomOffsets) {
+        configTime(gmtOffsetHours * 3600, DST_OFFSET * 3600, ntpServer.c_str());
+      } else {
+        configTime(0, 0, ntpServer.c_str());  //offset in seconds
+        setenv("TZ", timeZone.c_str(), 1);
+        tzset();
+      }
+      //Get initial time
+      syncTime();
     } else {
-      configTime(0, 0, ntpServer.c_str());  //offset in seconds
-      setenv("TZ", timeZone.c_str(), 1);
-      tzset();
+      //Manually set time to midnight, Jan 1, 2024
+      manualTimeSet(0, 0, 0, 1, 1, 2024);
     }
-    //Get initial time
-    syncTime();
-  } else {
-    //Manually set time to midnight, Jan 1, 2024
-    manualTimeSet(0, 0, 0, 1, 1, 2024);
+    delay(200);
+
+    //Initialize AHT20 Temp/Humidity
+    uint8_t status = aht.begin();
+    #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
+      Serial.print("AHT20 Begin Status: ");
+      Serial.println(status);
+    #endif  
+    delay(100);
+    aht.startMeasurementReady(true);
+
+    // Set Text Effect Speed
+    if (textEffectSpeed <= 10) {  //10 is max speed
+      textEffectPeriod = int(1000 / textEffectSpeed);
+    } else {
+      textEffectPeriod = 100;
+    }
+
+    //Rotary Encoder
+    rotaryEncoder.setEncoderType( EncoderType::HAS_PULLUP );  //Encoder board has pullup resistors
+    rotaryEncoder.setBoundaries( -1, 1, false );              //Will return -1, 0, 1 and will not wrap
+    rotaryEncoder.onTurned( &rotaryKnobCallback );            //Callback whenever knob is moved
+    //rotaryEncoder.onPressed( &rotaryButtonCallback );         //Callback whenever knob is clicked (button press)
+    rotaryEncoder.begin();
+
+    digitalWrite(BUZZER_OUTPUT, LOW);
+
+    //Briefly display IP Address
+    String holdTop = textTop;
+    String holdBottom = textBottom;
+    textTop = "IP:";
+    int ipLen = baseIPAddress.length();
+    if (ipLen > 6) {
+      int dispLen = (baseIPAddress.length() - 6);
+      textBottom = baseIPAddress.substring(dispLen);
+    } else {
+      textBottom = baseIPAddress;
+    }
+    updateText();
+    FastLED.show();
+    delay(1500);
+    textTop = holdTop;
+    textBottom = holdBottom;
+    fill_solid(LEDs, NUM_LEDS, CRGB::Black);
+    FastLED.show();
+
+    //Update temperatures if showing clock (and not binary mode)
+    if ((clockMode == 0) && (!binaryClock)) {
+      updateTemperature();
+      updateTemperatureExt(true);
+    }
   }
-  delay(200);
-
-  //Initialize AHT20 Temp/Humidity
-  uint8_t status = aht.begin();
-  #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
-    Serial.print("AHT20 Begin Status: ");
-    Serial.println(status);
-  #endif  
-  delay(100);
-  aht.startMeasurementReady(true);
-
-  // Set Text Effect Speed
-  if (textEffectSpeed <= 10) {  //10 is max speed
-    textEffectPeriod = int(1000 / textEffectSpeed);
-  } else {
-    textEffectPeriod = 100;
-  }
-
-  //Rotary Encoder
-  rotaryEncoder.setEncoderType( EncoderType::HAS_PULLUP );  //Encoder board has pullup resistors
-  rotaryEncoder.setBoundaries( -1, 1, false );              //Will return -1, 0, 1 and will not wrap
-  rotaryEncoder.onTurned( &rotaryKnobCallback );            //Callback whenever knob is moved
-  //rotaryEncoder.onPressed( &rotaryButtonCallback );         //Callback whenever knob is clicked (button press)
-  rotaryEncoder.begin();
-
-  digitalWrite(BUZZER_OUTPUT, LOW);
-
-  //Briefly display IP Address
-  String holdTop = textTop;
-  String holdBottom = textBottom;
-  textTop = "IP:";
-  int ipLen = baseIPAddress.length();
-  if (ipLen > 6) {
-    int dispLen = (baseIPAddress.length() - 6);
-    textBottom = baseIPAddress.substring(dispLen);
-  } else {
-    textBottom = baseIPAddress;
-  }
-  updateText();
-  FastLED.show();
-  delay(1500);
-  textTop = holdTop;
-  textBottom = holdBottom;
-  fill_solid(LEDs, NUM_LEDS, CRGB::Black);
-  FastLED.show();
-
-  //Update temperatures if showing clock (and not binary mode)
-  if ((clockMode == 0) && (!binaryClock)) {
-    updateTemperature();
-    updateTemperatureExt(true);
-  }
-
 #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
   Serial.println("Setup complete. Entering main loop...");
 #endif
@@ -3205,7 +3247,7 @@ void setup() {
 // ===============================================================
 void loop() {
   // When OTA flag set via HTML call, time to upload set at 20 sec. via server callback above.  Alter there if more time desired.
-  if (ota_flag) {
+  if ((ota_flag) && (!onboarding)) {
     displayOTA();
     uint16_t ota_time_start = millis();
     //while (ota_time_elapsed < ota_time_window) {
@@ -3251,7 +3293,7 @@ void loop() {
       tempUpdateCountExt = 0;
     }
 
-  //V+ Button (Green): Increase visitor score / Toggle timer (run/stop)
+    //V+ Button (Green): Increase visitor score / Toggle timer (run/stop)
     if (v1Reading == LOW && h1_Reading == !LOW) {
       if (clockMode == 2) {
         scoreboardLeft = scoreboardLeft + 1;
