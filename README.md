@@ -18,6 +18,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
 - Countdown Timer:
   - Set a starting time as short as 1 second or up to 99 minutes, 59 seconds
   - Different customizable colors for paused, running and final minute
+  - Onboard buzzer sounds when time expires (can be disable in settings)
   - Start, stop and reset via web app, API or by physical push buttons
 
 - Text Display:
@@ -29,7 +30,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - Brightness control
   - All display colors and modes are configurable
   - Different selectable fonts for large number displays
-  - See the Wiki for description of all the features
+  - API permits integration/automation with external systems such as Home Assistant
 
 - Optional secondary WLED controller
   - Extend the functionality with all the effects and features of full WLED
