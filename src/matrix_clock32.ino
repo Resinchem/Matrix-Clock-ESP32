@@ -1,8 +1,8 @@
 /* =================================================================
- * VERSION 0.10 - MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
+ * MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * January, 2025
- * Version 0.21
- * By ResinChem Tech - licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * Version 0.22
+ * Copyright ResinChemTech - released under the Apache 2.0 license
  * ================================================================= */
 
 #include <WiFi.h>
@@ -13,18 +13,18 @@
 #include <HTTPClient.h>         //For syncing weather from OpenWeatherMap (HTTP Get command)
 #include "esp_sntp.h"
 #include <ESP32Time.h>          //For setting and getting RTC time from ESP32: https://github.com/fbiego/ESP32Time (v2.0.6)
-#include <ArduinoJson.h>        //Needed for WiFi onboarding: https://arduinojson.org/ (v7.2.0)
+#include <ArduinoJson.h>        //Needed for saved config file: https://arduinojson.org/ (v7.2.0)
 #include <Wire.h>
 #include <WiFiUdp.h>
 #include <DFRobot_AHT20.h>      //AHT20 temp/humidity sensor: https://github.com/DFRobot/DFRobot_AHT20 (v1.0.0)
 #include <ESP32RotaryEncoder.h> //Rotary Encoder: https://github.com/MaffooClock/ESP32RotaryEncoder (v1.1.0)
 #include <ArduinoOTA.h>         //OTA Updates via Arduino IDE
 #include <Update.h>             //OTA Updates via web page
-#include "html.h"
-#define FASTLED_INTERNAL        // Suppress FastLED SPI/bitbanged compiler warnings
+#include "html.h"               //html code for the firmware update page
+#define FASTLED_INTERNAL        //Suppress FastLED SPI/bitbanged compiler warnings (only applies after first compile)
 #include <FastLED.h>
 
-#define VERSION "v0.21 (ESP32)"
+#define VERSION "v0.22 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -55,9 +55,10 @@
 
 /* ================ Default Starting Values ================
  * All of these following values can be modified and saved via
- * the web interface.  This is the preferred way to change
- * these default values.  Values listed here are just starting values
- * before the config file is read (or if it doesn't yet exist immediately after initial onboarding) */
+ * the web interface and the values below normally do not need to be modified.
+ * Using the web settings is the preferred way to change these default values.  
+ * Values listed here are just starting values before the config file 
+ * is read (or if it doesn't yet exist immediately after initial onboarding) */
 
 String ntpServer = "pool.ntp.org";      // Default server for syncing time
 String owmKey = "NA";                   // OpenWeatherMap API key (can be entered after onboarding via web app)
@@ -691,7 +692,6 @@ void readConfigFile() {
     #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
         Serial.println("failed to mount FS");
         Serial.println("LittleFS Formatted. Restarting ESP.");
-        //ESP.restart();
     #endif
     onboarding = true;
   }
@@ -900,8 +900,6 @@ void webMainPage() {
       }
       mainPage += "</td>";
     }
-    //mainPage += "</tr></table><br>";
-    //mainPage += "<table><tr>";
     mainPage += "<td>&nbsp;</td><td>&nbsp;</td>";
     mainPage += "</tr><tr><td>&nbsp;</td></tr><tr>";
 
@@ -1776,8 +1774,8 @@ void handleSettingsUpdate() {
     server.send(405, "text/plain", "Method Not Allowed");
   } else {
     String saveSettings;
-    timerRunning = false;  //stop any active timers
-    bool updateExtTemp = false; //flag for changes to external temp settings and to refresh display
+    timerRunning = false;          //stop any active timers
+    bool updateExtTemp = false;    //flag for changes to external temp settings and to refresh display
     bool updateTimeServer = false; //flag for setting new server params if NTP or offsets changed
     //Update vars here
     defaultClockMode = server.arg("clockmode").toInt();
@@ -2355,7 +2353,6 @@ void handleCountdownBuzzer() {
   page += "If you are not automatically redirected, follow this to <a href='http://" + baseIPAddress + "'> return to settings page</a>.";
   page += "</body></html>";
   server.send(200, "text/html", page);
-
 }
 
 void handleScoreEdit() {
@@ -2472,7 +2469,6 @@ void handleTextEdit() {
   page += "If you are not automatically redirected, follow this to <a href='http://" + baseIPAddress + "'> return to settings page</a>.";
   page += "</body></html>";
   server.send(200, "text/html", page);
-
 }
 
 void handleWLEDToggle() {
@@ -3140,6 +3136,7 @@ void setup() {
   FastLED.show();
 
   if (onboarding) {
+    //Display "Join WiFi" on display so user knows onboarding is required
     String holdTop = textTop;
     String holdBottom = textBottom;
     textTop = "&JOIN";
@@ -3169,7 +3166,6 @@ void setup() {
     bus2.begin(BUS2_SDA, BUS2_SCL, 100000);  //temp/humidity
 
     //Initialize time server
-    //sntp_set_sync_interval(300000); //Set to 5 minutes for testing
     if (autoSync) {
       sntp_set_sync_interval(autoSyncInterval * 60000);  //convert to ms
       if (useCustomOffsets) {
@@ -3207,9 +3203,9 @@ void setup() {
     rotaryEncoder.setEncoderType( EncoderType::HAS_PULLUP );  //Encoder board has pullup resistors
     rotaryEncoder.setBoundaries( -1, 1, false );              //Will return -1, 0, 1 and will not wrap
     rotaryEncoder.onTurned( &rotaryKnobCallback );            //Callback whenever knob is moved
-    //rotaryEncoder.onPressed( &rotaryButtonCallback );         //Callback whenever knob is clicked (button press)
     rotaryEncoder.begin();
 
+    //Set buzzer GPIO pin to low (off)
     digitalWrite(BUZZER_OUTPUT, LOW);
 
     //Briefly display IP Address
@@ -3250,7 +3246,6 @@ void loop() {
   if ((ota_flag) && (!onboarding)) {
     displayOTA();
     uint16_t ota_time_start = millis();
-    //while (ota_time_elapsed < ota_time_window) {
     while (ota_time_elapsed < ota_time) {
       ArduinoOTA.handle();
       ota_time_elapsed = millis() - ota_time_start;
@@ -3265,9 +3260,9 @@ void loop() {
 
   if (!onboarding) {
     //ElegantOTA.loop(); 
-    int modeReading = digitalRead(MODE_PIN);  //White
-    int v1Reading = digitalRead(GREEN_PIN);    //Green
-    int h1_Reading = digitalRead(RED_PIN);   //Red
+    int modeReading = digitalRead(MODE_PIN);       //White (top) button
+    int v1Reading = digitalRead(GREEN_PIN);        //Green (center) button
+    int h1_Reading = digitalRead(RED_PIN);         //Red (bottom) button
     int rotBtn_Reading = digitalRead(ENCODER_SW);  //Rotary button
 
     //Debounce rotary button
@@ -3282,7 +3277,7 @@ void loop() {
     lastButtonState = rotBtn_Reading;
 
     if (clockMode != 1) timerRunning = false;
-    // Mode Button (White)
+    // Mode Button (White/top)
     if (modeReading == LOW) { 
       clockMode = clockMode + 1; 
       delay(500);
@@ -3293,7 +3288,7 @@ void loop() {
       tempUpdateCountExt = 0;
     }
 
-    //V+ Button (Green): Increase visitor score / Toggle timer (run/stop)
+    //V+ Button (Green/middle): Increase visitor score / Toggle timer (run/stop)
     if (v1Reading == LOW && h1_Reading == !LOW) {
       if (clockMode == 2) {
         scoreboardLeft = scoreboardLeft + 1;
@@ -3309,7 +3304,7 @@ void loop() {
       }
       delay(500);
     }
-    //H+ Button (Red): Increase home score / Reset timer to starting value
+    //H+ Button (Red/bottom): Increase home score / Reset timer to starting value
     if (h1_Reading == LOW && v1Reading == !LOW) {
       if (clockMode == 2) {
         scoreboardRight = scoreboardRight + 1;
@@ -3462,7 +3457,6 @@ void loop() {
 void syncTime() {
   byte count = 0;
   byte maxCount = 10;
-  //struct tm timeinfo;
   bool gotTime = false;
   time(&now);            //read current time
   localtime_r(&now, &timeinfo);
@@ -3772,7 +3766,7 @@ void updateTemperatureExt(bool getData) {
         externalTemperature = ctemp;
         //Temperature returned in Kelvin. Convert to C then F
         if (ctemp > -88.0) {
-          ctemp = (ctemp -273.15);  //celcius
+          ctemp = (ctemp -273.15);           //celcius
           if (temperatureSymbol == 13) {
             ctemp = ((ctemp * 1.8) + 32.0);  //fahrenheit
           }
@@ -3787,7 +3781,7 @@ void updateTemperatureExt(bool getData) {
     //Round decimal temperature to integer
     ctemp = round(ctemp);
     externalTemperature = ctemp;  //save for later non-update refreshes
-    if (ctemp < 0) {  //Flip sign and set isNegative to true since byte cannot contain negative num
+    if (ctemp < 0) {              //Flip sign and set isNegative to true since byte cannot contain negative num
       ctemp = ctemp * -1;
       isNegative = true;
     } else if (ctemp >= 100) {
@@ -4402,14 +4396,11 @@ int toggleWLED(bool stateOn) {
   String httpRequestData = "win&T=";
   if (stateOn) {
     httpRequestData += "1";
-    //wledStateOn = true;
   } else {
     httpRequestData += "0";
-    //wledStateOn = false;
   }
   serverName = serverName + httpRequestData;
   wled.begin(client, serverName.c_str());
-  //wled.addHeader("Content-Type", "application/x-www-form-urlencoded");
   wled.addHeader("Content-Type", "text/plain");
   int httpResponseCode = wled.POST("");
   wled.end();
