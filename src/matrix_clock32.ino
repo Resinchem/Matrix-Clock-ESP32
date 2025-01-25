@@ -1,7 +1,7 @@
 /* =================================================================
  * MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * January, 2025
- * Version 0.22
+ * Version 0.23
  * Copyright ResinChemTech - released under the Apache 2.0 license
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        //Suppress FastLED SPI/bitbanged compiler warnings (only applies after first compile)
 #include <FastLED.h>
 
-#define VERSION "v0.22 (ESP32)"
+#define VERSION "v0.23 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -89,6 +89,8 @@ bool autoSync = true;                   //Auto-sync to NTP server
 int autoSyncInterval = 60;              //How often, in minutes, to sync the time.  Ignored if autoSync=false.
 
 String wledAddress = "0.0.0.0";         // IP Address of WLED Controller (set to 0.0.0.0 if not used)
+byte wledMaxPreset = 0;                //Max preset number to use for button cycle
+             
 
 //Define Color Arrays
 //If adding new colors, increase array sizes and add to void defineColors()
@@ -164,6 +166,7 @@ long lastReconnectAttempt = 0;
 unsigned long prevTime = 0;
 bool useWLED = false;                     // Indicates whether secondary WLED controller is present (based on non-zero IP address)
 bool wledStateOn = false;                 // Current state of WLED (can get out of sync if changed via WLED interface)
+byte wledCurPreset = 0;                   // Current active preset (used and set by local pushbuttons)
 
 //Flags for rotary encoder turns
 volatile bool turnedRightFlag = false;
@@ -603,6 +606,7 @@ void readConfigFile() {
             useBuzzer = false;
           }
           wledAddress = json["wled_address"] | "0.0.0.0";
+          wledMaxPreset = json["wled_max_preset"] | 0;
           webColorClock = json["clock_color"] | 0;
           webColorTemperatureInt = json["temp_color_int"] | 3;
           webColorTemperatureExt = json["temp_color_ext"] | 0;
@@ -665,7 +669,7 @@ void readConfigFile() {
           //WLED Interface
           if (wledAddress == "0.0.0.0") {
             useWLED = false;
-          } else {
+           } else {
             useWLED = true;
           }
 
@@ -755,6 +759,7 @@ void writeConfigFile(bool restart_ESP) {
       doc["use_buzzer"] = 0;
     }
     doc["wled_address"] = wledAddress;
+    doc["wled_max_preset"] = wledMaxPreset;
     doc["clock_color"] = webColorClock;
     doc["temp_color_int"] = webColorTemperatureInt;
     doc["temp_color_ext"] = webColorTemperatureExt;
@@ -1334,7 +1339,7 @@ void webMainPage() {
       </td></tr>\
       </table><br><br>";
 
-    //WLED Controller IP Address
+    //WLED Controller IP Address & max preset
     mainPage += "<b>Secondary WLED Controller</b><br>\
       <i>Optional</i>: Set IP address to '0.0.0.0' if not using WLED Controller<br><br>\
       <table><tr>\
@@ -1343,6 +1348,11 @@ void webMainPage() {
     mainPage += wledAddress;
     mainPage += "\">\
       </td></tr>\
+      <tr>\
+      <td><label for=\"wledmapreset\">Max. Preset Num:</label></td>\
+      <td><input type=\"number\" name=\"wledmaxpreset\" min=\"0\" max=\"20\" step=\"1\" style=\"width:3em\" value=\"";
+    mainPage += String(wledMaxPreset);
+    mainPage += "\"> (0 - 20)\  
       </table><br><br>";
 
     //Save as boot defaults checkbox
@@ -1877,6 +1887,7 @@ void handleSettingsUpdate() {
     } else {
       useWLED = true;
     }
+    wledMaxPreset = server.arg("wledmaxpreset").toInt();
 
     //LED Colors
     webColorClock = server.arg("clockcolor").toInt();
@@ -2136,7 +2147,8 @@ void handleSettingsUpdate() {
     message += "</table><br>";
 
     message += "<u><b>Optional WLED Controller</b></u><br>";
-    message += "Controller IP Address: " + wledAddress + "<br><br>";
+    message += "Controller IP Address: " + wledAddress + "<br>";
+    message += "Max. Preset Number: " + String(wledMaxPreset) + "<br><br>";
     //If update checked, write new values to flash
     if (saveSettings == "save") {
       message += "<b>New settings saved as new boot defaults.</b> Controller will now reboot.<br>";
@@ -3259,7 +3271,6 @@ void loop() {
   server.handleClient();
 
   if (!onboarding) {
-    //ElegantOTA.loop(); 
     int modeReading = digitalRead(MODE_PIN);       //White (top) button
     int v1Reading = digitalRead(GREEN_PIN);        //Green (center) button
     int h1_Reading = digitalRead(RED_PIN);         //Red (bottom) button
@@ -3272,15 +3283,27 @@ void loop() {
     //If pressed past debounce, then toggle LEDs off/on
     if ((millis() - lastDebounceTime) > debounceDelay) {
       startButtonState = rotBtn_Reading;
-      if (!startButtonState) toggleLEDs(!ledsOn);
+      if (!startButtonState) {
+        if ((wledStateOn) || (wledOn())) {
+          toggleWLED(false);
+          wledStateOn = false;
+        } else {
+          toggleLEDs(!ledsOn);
+        }
+      }
     }
     lastButtonState = rotBtn_Reading;
 
     if (clockMode != 1) timerRunning = false;
     // Mode Button (White/top)
     if (modeReading == LOW) { 
-      clockMode = clockMode + 1; 
-      delay(500);
+      if ((wledStateOn) || (wledOn())) {
+        //Set to first preset
+        int success = wledPresetFirst();
+      } else {
+        clockMode = clockMode + 1; 
+        delay(500);
+      }
     }
     if (clockMode > 3) {         
       clockMode = 0;
@@ -3288,42 +3311,51 @@ void loop() {
       tempUpdateCountExt = 0;
     }
 
-    //V+ Button (Green/middle): Increase visitor score / Toggle timer (run/stop)
+    //V+ Button (Green/middle): Increase visitor score / Toggle timer (run/stop) - Previous preset if WLED active
     if (v1Reading == LOW && h1_Reading == !LOW) {
-      if (clockMode == 2) {
-        scoreboardLeft = scoreboardLeft + 1;
-        if (scoreboardLeft > 99)
-          scoreboardLeft = 0;
-      } else if (clockMode == 1) {
-        if (!timerRunning && remCountdownMillis > 0) {
-          endCountDownMillis = millis() + remCountdownMillis;
-          timerRunning = true;
-        } else if (timerRunning) {
-          timerRunning = false;  
-        }  
+      if ((wledStateOn) || (wledOn())) {
+         int success = wledPresetAdvance(false);
+      } else {
+        if (clockMode == 2) {
+          scoreboardLeft = scoreboardLeft + 1;
+          if (scoreboardLeft > 99)
+            scoreboardLeft = 0;
+        } else if (clockMode == 1) {
+          if (!timerRunning && remCountdownMillis > 0) {
+            endCountDownMillis = millis() + remCountdownMillis;
+            timerRunning = true;
+          } else if (timerRunning) {
+            timerRunning = false;  
+          }  
+        }
       }
-      delay(500);
+    delay(500);
     }
-    //H+ Button (Red/bottom): Increase home score / Reset timer to starting value
+
+    //H+ Button (Red/bottom): Increase home score / Reset timer to starting value - Next preset if WLED active
     if (h1_Reading == LOW && v1Reading == !LOW) {
-      if (clockMode == 2) {
-        scoreboardRight = scoreboardRight + 1;
-        if (scoreboardRight > 99) 
-          scoreboardRight = 0;
-      } else if (clockMode == 1) {
-        if (!timerRunning) {
-          // Reset timer to last start value
-          countdownMilliSeconds = initCountdownMillis;
-          remCountdownMillis = initCountdownMillis;
-          endCountDownMillis = countdownMilliSeconds + millis();
-        } else {
-          timerRunning = false;
+      if ((wledStateOn) || (wledOn())) {
+        int success = wledPresetAdvance(true);
+      } else {
+        if (clockMode == 2) {
+          scoreboardRight = scoreboardRight + 1;
+          if (scoreboardRight > 99) 
+            scoreboardRight = 0;
+        } else if (clockMode == 1) {
+          if (!timerRunning) {
+            // Reset timer to last start value
+            countdownMilliSeconds = initCountdownMillis;
+            remCountdownMillis = initCountdownMillis;
+            endCountDownMillis = countdownMilliSeconds + millis();
+          } else {
+            timerRunning = false;
+          }
         }
       }
       delay(500);
     }
 
-    //V+ and H+ buttons (green + red): Reset scoreboard scores / clear starting time
+    //V+ and H+ buttons (green + red): Reset scoreboard scores / clear starting time - Not used for WLED
     if (v1Reading == LOW && h1_Reading == LOW) {
       if (clockMode == 2) {
         scoreboardLeft = 0;
@@ -3353,6 +3385,7 @@ void loop() {
         switch (textEffect) {
           case 1:   //Flash
             if (textEffect != oldTextEffect){
+              allBlank();
               oldTextEffect = textEffect;
             }
             updateTextFlash();
@@ -3360,6 +3393,7 @@ void loop() {
             break;
           case 2:   //FlashAlternate
             if (textEffect != oldTextEffect){
+              allBlank();
               oldTextEffect = textEffect;
             }
             updateTextFlashAlternate();
@@ -3367,6 +3401,7 @@ void loop() {
             break;
           case 3:  //Fade In
             if (textEffect != oldTextEffect) {
+              allBlank();
               effectBrightness = 0;
               oldTextEffect = textEffect;
             }
@@ -3375,6 +3410,7 @@ void loop() {
             break;
           case 4:  //Fade Out
             if (textEffect != oldTextEffect) {
+              allBlank();
               effectBrightness = brightness;
               oldTextEffect = textEffect;
             }
@@ -3383,6 +3419,7 @@ void loop() {
             break;
           case 5:  //Appear
             if (textEffect != oldTextEffect) {
+              allBlank();
               appearCount = 99;
               oldTextEffect = textEffect;
             }
@@ -3391,6 +3428,7 @@ void loop() {
             break;
           case 6:  //Appear Flash
             if (textEffect != oldTextEffect) {
+              allBlank();
               appearCount = 99;
               oldTextEffect = textEffect;
             }
@@ -3399,6 +3437,7 @@ void loop() {
             break;
           case 7:  //Rainbow (random letter colors)
             if (textEffect != oldTextEffect){
+              allBlank();
               oldTextEffect = textEffect;
             }
             updateTextRainbow();
@@ -4081,9 +4120,12 @@ byte getRandomColor() {
 }
 // --------Rotary Knob Functions----------
 void rotaryTurnedRight() {
-  //Increase brightness by 10
-
-  if (ledsOn) {
+  //Increase brightness.  Commands depend upon whether clock or WLED controller is active
+  if (wledOn()) {
+    //Send increase brightness by 25 to WLED controller
+    int success = wledBrightness(true);
+  } else if (ledsOn) {
+    //Increase Clock brightness by 10
     if (brightness <= 240) {
       brightness += 10;
 
@@ -4100,8 +4142,11 @@ void rotaryTurnedRight() {
 }
 
 void rotaryTurnedLeft() {
-  //Decrease brightness by 10
-  if (ledsOn) {
+  //Decrease brightness. Commands depend upon whether clock or WLED controller is active
+  if (wledOn()) {
+    //Send decrease brightness by 25 to WLED controller
+    int success = wledBrightness(false);
+  } else if (ledsOn) {
     if (brightness >= 15) {
       brightness -= 10;
     } else if (brightness < 10) {
@@ -4379,35 +4424,11 @@ String getEffectList() {
   return retVal;
 }
 
-// ===========================
-//  Misc Functions
-// ===========================
-boolean isValidNumber(String str){
-  for(byte i=0;i<str.length();i++) {
-    if(isDigit(str.charAt(i))) return true;
-  }
-  return false;
-}
-
-int toggleWLED(bool stateOn) {
-  WiFiClient client;
-  HTTPClient wled;
-  String serverName = "http://" + wledAddress + "/";
-  String httpRequestData = "win&T=";
-  if (stateOn) {
-    httpRequestData += "1";
-  } else {
-    httpRequestData += "0";
-  }
-  serverName = serverName + httpRequestData;
-  wled.begin(client, serverName.c_str());
-  wled.addHeader("Content-Type", "text/plain");
-  int httpResponseCode = wled.POST("");
-  wled.end();
-  return httpResponseCode;
-}
-
+// =========================
+//  WLED Functions/Inteface 
+// =========================
 bool wledOn() {
+  //Call to determine current state of WLED (on/off)
   bool retVal = false;
   if (useWLED) {
     String serverName = "http://" + wledAddress + "/json";
@@ -4431,5 +4452,114 @@ bool wledOn() {
     } 
     http.end(); 
   }
+  wledStateOn = retVal;    //Local variable for tracking state
   return retVal;
+}
+
+int toggleWLED(bool stateOn) {
+  int httpResponseCode = 503;
+  if (useWLED) {
+    //Set on/off state of WLED
+    WiFiClient client;
+    HTTPClient wled;
+    String serverName = "http://" + wledAddress + "/";
+    String httpRequestData = "win&T=";
+    if (stateOn) {
+      httpRequestData += "1";
+    } else {
+      httpRequestData += "0";
+    }
+    serverName = serverName + httpRequestData;
+    wled.begin(client, serverName.c_str());
+    wled.addHeader("Content-Type", "text/plain");
+    httpResponseCode = wled.POST("");
+    wled.end();
+  }
+  return httpResponseCode;
+}
+
+int wledBrightness(bool increase) {
+  int httpResponseCode = 503;
+  if (useWLED) {
+    //Set WLED brightness
+    //Passing true for increase will increase brightness by 20
+    //Passing false for increase will DECREASE brightness by 20
+    WiFiClient client;
+    HTTPClient wled;
+    String serverName = "http://" + wledAddress + "/";
+    String httpRequestData = "";
+    if (increase) {
+      httpRequestData += "win&A=~10";
+    } else {
+      httpRequestData += "win&A=~-10";
+    }
+    serverName = serverName + httpRequestData;
+    wled.begin(client, serverName.c_str());
+    wled.addHeader("Content-Type", "text/plain");
+    httpResponseCode = wled.POST("");
+    wled.end();
+  }
+  return httpResponseCode;
+}
+
+int wledPresetFirst() {
+  int httpResponseCode = 503;
+  if ((useWLED) && (wledMaxPreset > 0)) {
+    //Set WLED to first preset (preset #1) - white/top button on dispaly
+    WiFiClient client;
+    HTTPClient wled;
+    String serverName = "http://" + wledAddress + "/";
+    String httpRequestData = "";
+    httpRequestData += "win&PL=1";
+    wledCurPreset = 1;
+    serverName = serverName + httpRequestData;
+    wled.begin(client, serverName.c_str());
+    wled.addHeader("Content-Type", "text/plain");
+    httpResponseCode = wled.POST("");
+    wled.end();
+  }
+  return httpResponseCode;
+}
+
+int wledPresetAdvance(bool increase) {
+  int httpResponseCode = 503;
+  if ((useWLED) && (wledMaxPreset > 1)) {
+    WiFiClient client;
+    HTTPClient wled;
+    String serverName = "http://" + wledAddress + "/";
+    String httpRequestData = "";
+    
+    if (increase) {
+      //move to next preset
+      if (wledCurPreset >= wledMaxPreset) {
+        wledCurPreset = 1;
+      } else {
+        wledCurPreset++;
+      }
+    } else {
+      //move to previous preset 
+      if (wledCurPreset <= 1) {
+        wledCurPreset = wledMaxPreset;
+      } else {
+        wledCurPreset--;
+      }
+    }
+    httpRequestData += "win&PL=" + String(wledCurPreset);
+    serverName = serverName + httpRequestData;
+    wled.begin(client, serverName.c_str());
+    wled.addHeader("Content-Type", "text/plain");
+    httpResponseCode = wled.POST("");
+    wled.end();
+  }
+  return httpResponseCode;
+}
+
+// ===========================
+//  Misc Functions
+// ===========================
+boolean isValidNumber(String str){
+  for(byte i=0;i<str.length();i++) {
+    if(isDigit(str.charAt(i))) return true;
+  }
+  return false;
 }
