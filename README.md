@@ -38,7 +38,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - Auto-switching between controllers.  Show WLED when WLED is on and show the clock when WLED is off
   - Microphone for WLED audio-reactive effects
 
-This repo and its wiki cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
+This repo and the [wiki](https://github.com/Resinchem/Matrix-Clock-ESP32/wiki) cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
 
 YouTube Video (overview): _coming soon_
 
