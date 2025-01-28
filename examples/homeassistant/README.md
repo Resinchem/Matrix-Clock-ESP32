@@ -41,7 +41,7 @@ The dashboard does use two custom controls downloaded and installed from the Hom
 
 [Text Divider Row](https://github.com/iantrich/text-divider-row) (v1.4.0)*
 
-_The current version of the text divider row (1.4.1) has an issue with the transparent background, but the author has been unresponsive and the repo hasn't been updated in five years, so you may want to consider replacing this with something like a markdown or heading card._
+_*The current version of the text divider row (1.4.1) has an issue with the transparent background, but the author has been unresponsive and the repo hasn't been updated in five years, so you may want to consider replacing this with something like a markdown or heading card._
 
 It is unlikely that you will create a dashboard using raw YAML like this, but it is provided as an example and show you can see things like how the custom button cards are used to launch a REST command or automation, how the conditional cards are setup, etc.
 
