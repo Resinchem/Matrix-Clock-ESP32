@@ -1,0 +1,434 @@
+# =============================================
+#  This package contains all matrixclock_32
+#  related entities, scrips and automations
+#  in a single package file.
+#
+#  If you are not using packages in Home Assistant,
+#    then each entity type (e.g. input_numbers, automations, etc.)
+#    must be split out of this file and placed in the proper location
+#    in your Home Assistant.  If not using a split config, this will
+#    normally be the configuration.yaml file.
+# ================================================================
+# THIS FILE IS PROVIDED AS AN EXAMPLE ONLY AND WILL LIKELY REQUIRE
+# MODIFICATION FOR USE IN YOUR OWN HOME ASSISTANT!
+# ================================================================
+
+# *****************************
+#  HELPER ENTITIES
+# *****************************
+
+# ----------------------
+#  INPUT BOOLEANS
+# -----------------------
+
+# -----------------------
+#  INPUT NUMBERS
+# -----------------------
+input_number:
+  matrix32_brightness:
+    name: Matrix32 Clock Brightness
+    mode: slider
+    min: 0
+    max: 250
+    step: 1
+
+  matrix32_active_mode:
+    name: Matrix32 Clock Active Mode
+    min: 0
+    max: 3
+    step: 1
+    initial: 0
+    
+  matrix32_score_left:
+    name: Matrix32 Clock Left Score
+    min: 0
+    max: 99
+    step: 1
+    initial: 0
+
+  matrix32_score_right:
+    name: Matrix32 Clock Right Score
+    min: 0
+    max: 99
+    step: 1
+    initial: 0
+    
+  matrix32_text_speed:
+    name: Matrix32 Clock Text Effect Speed
+    min: 1
+    max: 10
+    step: 1
+    initial: 1
+    
+# -----------------------
+#  INPUT SELECT
+# -----------------------
+# Current, the IP address of the primary clock controller must be hardcoded here
+# If you have more than one controller, list each IP searately and create a dropown
+# on your dashboard to select the controller to use
+input_select:
+  matrix32_ip_address:
+    name: Matrix32 Contoller IP Address
+    options:
+     - '192.168.1.182'   #MatrixClock-02
+     - '192.168.1.246'   #MatrixClock32
+     
+  matrix32_text_effect:
+    name: Matrix32 Text Effect
+    options:
+     - '0 - None'
+     - '1 - Flash'
+     - '2 - Flash Alternate'
+     - '3 - Fade-In'
+     - '4 - Fade-Out'
+     - '5 - Appear'
+     - '6 - Appear Flash'
+     - '7 - Rainbow'
+    initial: '0 - None'
+
+# -----------------------
+#  INPUT TEXT
+# -----------------------
+input_text:
+  matrix32_text_top:
+    name: Matrix32 Text Top Row
+    min: 0
+    max: 6
+    initial: 'HELLO'
+  matrix32_text_bottom:
+    name: Matrix32 Text Bottom Row
+    min: 0
+    max: 6
+    initial: 'WORLD'
+
+
+# ==================================
+#     SWITCHES (non-MQTT)
+# ==================================
+switch:
+  platform: template
+  # Switches for dashboard buttons to change display mode
+  switches:
+    matrix32_clockmode:
+      friendly_name: Matrix32 Clock Mode
+      value_template: "{{ (states('input_number.matrix32_active_mode') | int) == 0 }}"
+      turn_on:
+        action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_active_mode
+        data:
+          value: 0
+      turn_off:
+        # do nothing
+    matrix32_countmode:
+      friendly_name: Matrix32 Countdown Mode
+      value_template: "{{ (states('input_number.matrix32_active_mode') | int) == 1 }}"
+      turn_on:
+        action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_active_mode
+        data:
+          value: 1
+      turn_off:
+        # do nothing
+    matrix32_scoremode:
+      friendly_name: Matrix32 Scoreboard Mode
+      value_template: "{{ (states('input_number.matrix32_active_mode') | int) == 2 }}"
+      turn_on:
+        action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_active_mode
+        data:
+          value: 2
+      turn_off:
+        # do nothing
+    matrix32_textmode:
+      friendly_name: Matrix32 Text Mode
+      value_template: "{{ (states('input_number.matrix32_active_mode') | int) == 3 }}"
+      turn_on:
+        action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_active_mode
+        data:
+          value: 3
+      turn_off:
+        # do nothing
+
+# ========================================
+#  RESTful Commands - for sending commands
+# ========================================
+rest_command:
+  ## Testing MatrixClock32 API
+  matrix32_off:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?system=off'
+  matrix32_on:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?system=on'
+  matrix32_toggle:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?system=toggle'
+  matrix32_reboot:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?system=restart'
+  matrix32_wled:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?wled=toggle'  
+  matrix32_mode:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?mode={{ states("input_number.matrix32_active_mode") | int}}'
+  matrix32_binaryclock:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?binaryclock=toggle' 
+  matrix32_brightness:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?brightness={{ states("input_number.matrix32_brightness") | int}}'
+  matrix32_count_toggle:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?countdown=toggle' 
+  matrix32_count_reset:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?countdown=reset' 
+  matrix32_count_buzzer:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?buzzer=2'
+  matrix32_score_left:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?leftscore={{ states("input_number.matrix32_score_left") | int}}'
+  matrix32_score_right:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?rightscore={{ states("input_number.matrix32_score_right") | int}}'
+  matrix32_text_top:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?texttop={{ states("input_text.matrix32_text_top")[:6] }}'
+  matrix32_text_bottom:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?textbottom={{ states("input_text.matrix32_text_bottom")[:6] }}'
+  matrix32_text_effect:
+    url: 'http://{{states("input_select.matrix32_ip_address")}}/api?texteffect={{ (states("input_select.matrix32_text_effect")[:1]) | int}}'
+  matrix32_text_speed:
+     url: 'http://{{states("input_select.matrix32_ip_address")}}/api?textspeed={{ states("input_number.matrix32_text_speed") | int}}'
+
+# ============================================
+#  REST commands - get state and update sensors
+# ============================================
+rest:
+  resource_template: 'http://{{states("input_select.matrix32_ip_address")}}/api/state'
+  scan_interval: 1440  #Set to once a day, but can be called manually via script (script.matrix32_refresh)
+  binary_sensor:
+    - name: "Matrix32 State"
+      value_template: "{{ value_json.power }}"
+    - name: "Matrix32 WLED State"
+      value_template: "{{ value_json.wled }}"
+    - name: "Matrix32 Binary Clock"
+      value_template: "{{ value_json.binaryclock }}"
+  sensor:
+    - name: "Matrix32 Brightness"
+      value_template: "{{ (value_json.brightness) | int }}"
+    - name: "Matrix32 Display Mode"
+      value_template: "{{ (value_json.displaymode) | int }}"
+    - name: "Matrix32 Countdown"
+      value_template: "{{ value_json.countdown }}"
+    - name: "Matrix32 Score Left"
+      value_template: "{{ (value_json.scoreleft) | int }}"
+    - name: "Matrix32 Score Right"
+      value_template: "{{ (value_json.scoreright) | int }}"
+    - name: "Matrix32 Text Top"
+      value_template: "{{ value_json.texttop }}"
+    - name: "Matrix32 Text Bottom"
+      value_template: "{{ value_json.textbottom }}"
+    - name: "Matrix32 Text Effect"
+      value_template: "{{ (value_json.texteffect) | int }}"
+    - name: "Matrix32 Text Speed"
+      value_template: "{{ (value_json.textspeed) | int }}"
+      
+# ==================================      
+#  Automations
+# ==================================
+automation:
+  # ID numbers are just unique random strings - change if desired
+  - alias: Matrix32 Mode Change
+    id: d355d15f-0eb0-46a4-a35a-230f20cbe38e
+    triggers:
+      - trigger: state
+        entity_id: input_number.matrix32_active_mode
+    actions:
+      - action: rest_command.matrix32_mode
+      
+  - alias: Matrix32 Brightness
+    id: 56711668-2331-4748-8385-dd85cf991e28
+    triggers:
+      - trigger: state
+        entity_id: input_number.matrix32_brightness
+    actions: 
+      - action: rest_command.matrix32_brightness
+      - action: homeassistant.update_entity
+        data:
+          entity_id: sensor.matrix32_brightness
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_brightness
+        data:
+          value: "{{ states('sensor.matrix32_brightness') | int }}"
+      
+  - alias: Matrix32 Score Left Change
+    id: 1f7624da-173f-4a78-a577-4d43a19b18e7
+    triggers:
+      - trigger: state
+        entity_id: input_number.matrix32_score_left
+    actions:
+      - action: rest_command.matrix32_score_left
+      
+  - alias: Matrix32 Score Right Change
+    id: 8fdbc45d-50c2-4a1f-ae6f-5757d2f61088
+    triggers:
+      - trigger: state
+        entity_id: input_number.matrix32_score_right
+    actions:
+      - action: rest_command.matrix32_score_right
+      
+  - alias: Matrix32 Text Top Row Change
+    id: 018eec9b-3499-4361-a678-807a8dd58b35
+    triggers:
+      - trigger: state
+        entity_id: input_text.matrix32_text_top
+    actions:
+      - action: rest_command.matrix32_text_top
+
+  - alias: Matrix32 Text Bottom Row Change
+    id: adf6d37d-e399-4a80-919e-1a68aae0856b
+    triggers:
+      - trigger: state
+        entity_id: input_text.matrix32_text_bottom
+    actions:
+      - action: rest_command.matrix32_text_bottom
+      
+  - alias: Matrix32 Text Effect Change
+    id: 7b29f1c9-786d-44a9-b1a5-7b29a0481d66
+    triggers: 
+      - trigger: state
+        entity_id: input_select.matrix32_text_effect
+    actions:
+      - action: rest_command.matrix32_text_effect
+      
+  - alias: Matrix32 Text Speed Change
+    id: b27d5d43-9ed2-4ce3-a6a7-a99b8ef1bb1c
+    triggers:
+      - trigger: state
+        entity_id: input_number.matrix32_text_speed
+    actions:
+      - action: rest_command.matrix32_text_speed
+
+# ==================================
+#  Scripts
+# ==================================
+script:
+  matrix32_refresh:
+    #Call api to refresh all local helper values
+    alias: 'Matrix32 Refresh'
+    sequence:
+      - action: homeassistant.update_entity
+        data:
+          entity_id: binary_sensor.matrix32_state
+      - delay: '00:00:02'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_active_mode
+        data:
+          value: "{{ states('sensor.matrix32_display_mode') | int }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_brightness
+        data:
+          value: "{{ states('sensor.matrix32_brightness') | int }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_score_left
+        data:
+          value: "{{ states('sensor.matrix32_score_left') | int }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_score_right
+        data:
+          value: "{{ states('sensor.matrix32_score_right') | int }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_text_speed
+        data:
+          value: "{{ states('sensor.matrix32_text_speed') | int }}"
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.matrix32_text_effect
+        data:
+          option: >
+            {% if ((states('sensor.matrix32_text_effect') | int) == 0) %}
+            0 - None
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 1) %}
+            1 - Flash
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 2) %}
+            2 - Flash Alternate
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 3) %}
+            3 - Fade-In
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 4) %}
+            4 - Fade-Out
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 5) %}
+            5 - Appear
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 6) %}
+            6 - Appear Flash
+            {% elif ((states('sensor.matrix32_text_effect') | int) == 7) %}
+            7 - Rainbow
+            {% endif %}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.matrix32_text_top
+        data:
+          value: "{{ states('sensor.matrix32_text_top') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.matrix32_text_bottom
+        data:
+          value: "{{ states('sensor.matrix32_text_bottom') }}"
+
+            
+  matrix32_led_toggle:
+    alias: 'Matrix32 Toggle Power'
+    mode: single
+    sequence:
+      - action: rest_command.matrix32_toggle
+      - action: homeassistant.update_entity
+        data:
+          entity_id: binary_sensor.matrix32_state
+
+  matrix32_wled:
+    alias: 'Matrix32 WLED Mode Toggle'
+    mode: single
+    sequence:
+      - action: rest_command.matrix32_wled
+      - action: homeassistant.update_entity
+        data:
+          entity_id: binary_sensor.matrix32_wled_state
+
+  matrix32_binary_clock:
+    alias: 'Matrix32 Binary Clock Toggle'
+    mode: single
+    sequence: 
+      - action: rest_command.matrix32_binaryclock
+      - action: homeassistant.update_entity
+        data:
+          entity_id: binary_sensor.matrix32_binary_clock
+      
+  matrix32_count_toggle:
+    alias: 'Matrix32 Countdown Toggle'
+    sequence:
+      - action: rest_command.matrix32_count_toggle
+      - action: homeassistant.update_entity
+        data:
+          entity_id: sensor.matrix32_countdown
+
+  matrix32_score_reset:
+  # Reset score input number to 0 then call rest command. Repleat for second score
+    alias: 'Matrix32 Reset Scores'
+    mode: queued
+    sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_score_left
+        data:
+          value: 0
+      - action: rest_command.matrix32_score_left
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.matrix32_score_right
+        data:
+          value: 0
+      - action: rest_command.matrix32_score_right
+      - action: homeassistant.update_entity
+        data:
+          entity_id: sensor.matrix32_score_left
+
+  

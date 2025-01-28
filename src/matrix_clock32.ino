@@ -1,7 +1,7 @@
 /* =================================================================
  * MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * January, 2025
- * Version 0.23
+ * Version 0.24
  * Copyright ResinChemTech - released under the Apache 2.0 license
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        //Suppress FastLED SPI/bitbanged compiler warnings (only applies after first compile)
 #include <FastLED.h>
 
-#define VERSION "v0.23 (ESP32)"
+#define VERSION "v0.24 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -2742,12 +2742,19 @@ void handleApiWled(String value) {
   } else if (value == "off") {
     turnOn = false;
     response = 200;
+  } else if (value == "toggle") {
+    turnOn = !(wledOn());
+    response = 200;
   } else if (isValidNumber(value)) {
     if ((value.toInt()) == 1) {
       turnOn = true;
       response = 200;
     } else if ((value.toInt()) == 0) {
       turnOn = false;
+      response = 200;
+    } else {
+      //Just toggle with any numeric value other than 0 or 1
+      turnOn = !(wledOn());
       response = 200;
     }
   }
@@ -2756,6 +2763,30 @@ void handleApiWled(String value) {
     result = ">WLED command sent successfully";
   }
   server.send(response, "text/html", result);
+}
+
+void handleApiBinary (String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  //Only apply if display is in clock mode (0)
+  if (clockMode == 0) {
+    oldMode = 99;   //Clears display and redraws temperature(s) when binary switched off
+    if (value == "on") {
+      binaryClock = true;
+      response = 200;
+    } else if (value == "off") {
+      binaryClock = false;
+      response = 200;
+    } else if (value == "toggle") {
+      binaryClock = !binaryClock;
+      response = 200;
+    }
+  }
+  if (response == 200) {
+    result = "Binary command sent successfully";
+  }
+  server.send(response, "text/html", result);
+
 }
 
 void handleApiCountdown (String value) {
@@ -2775,6 +2806,15 @@ void handleApiCountdown (String value) {
     } else if (value == "stop") {
       timerRunning = false;
       response = 200;
+    } else if (value == "toggle") {
+      if ((!timerRunning && remCountdownMillis > 0)) {
+        endCountDownMillis = millis() + remCountdownMillis;
+        timerRunning = true;
+        response = 200;
+      } else {
+        timerRunning = false;
+        response = 200;
+      }
     } else if (value == "reset") {
       timerRunning = false;
       initCountdownMillis = ((defaultCountdownMin * 60) + defaultCountdownSec) * 1000;
@@ -2906,6 +2946,10 @@ void handleApiSystem(String value) {
     toggleLEDs(true);
     response = 200;
     result = "System command 'on' sent successfully";
+  } else if (value == "toggle") {
+    toggleLEDs(!ledsOn);
+    response = 200;
+    result = "System command 'off' sent successfully";
   } else if (value == "restart") {
     response = 200;
     result = "System command 'restart' sent successfully";
@@ -2920,6 +2964,127 @@ void handleApiSystem(String value) {
     result = "System command 'OTA Update' sent successfully";
   }
   server.send(response, "text/html", result);
+}
+
+void handleApiState() {
+  String result = "";
+  int response = 400;
+  //Build response as JSON with current system states
+  //Current running state
+  result += "{\"power\":\"";
+  if (ledsOn) {
+    result += "on\",";
+  } else {
+    result += "off\",";
+  }
+  result += "\"displaymode\":\"" + String(clockMode) + "\",";
+  result += "\"wled\":\"";
+  if (wledOn()) {
+    result += "on\",";
+  } else {
+    result += "off\",";
+  }
+  result += "\"binaryclock\":\"";
+  if (binaryClock) {
+    result += "on\",";
+  } else {
+    result += "off\",";
+  }
+  result += "\"brightness\":\"" + String(brightness) + "\",";
+  result += "\"countdown\":\"";
+  if (timerRunning) {
+    result += "running\",";
+  } else {
+    result += "stopped\",";
+  }
+  result += "\"scoreleft\":\"" + String(scoreboardLeft) + "\",";
+  result += "\"scoreright\":\"" + String(scoreboardRight) + "\",";
+  result += "\"texttop\":\"" + textTop + "\",";
+  result += "\"textbottom\":\"" + textBottom + "\",";
+  result += "\"texteffect\":\"" + String(textEffect) + "\",";
+  result += "\"textspeed\":\"" + String(textEffectSpeed) + "\",";
+  //Config values as nested 'config' object/key
+  result += "\"config\": {";
+    result += "\"devicename\":\"" + deviceName + "\",";
+    result += "\"maxmilliamps\":\"" + String(milliamps) + "\",";
+    result += "\"bootmode\":\"" + String(defaultClockMode) + "\",";
+    result += "\"numfont\":\"" + String(numFont) + "\",";
+    result += "\"hours\":\"" + String(hourFormat) + "\",";
+    if (useCustomOffsets) {
+      result += "\"timezone\":\"custom\",";
+      result += "\"gmtoffset\":\"" + String(gmtOffsetHours) + "\",";
+      result += "\"dstoffset\":\"" + String(dstOffsetHours) + "\",";
+    } else {
+      result += "\"timezone\":\"" + timeZone + "\",";
+      result += "\"gmtoffset\":\"na\",";
+      result += "\"dstoffset\":\"na\",";
+    } 
+    if (autoSync) {
+      result += "\"autosync\":\"on\",";
+      result += "\"ntpserver\":\"" + ntpServer + "\",";
+      result += "\"timesyncinterval\":\"" + String(autoSyncInterval) + "\",";
+    } else {
+      result += "\"autosync\":\"off\",";
+      result += "\"ntpserver\":\"na\",";
+      result += "\"timesyncinterval\":\"0\",";
+    }
+    //Mask OWM Key
+    result += "\"owmkey\":\"";
+    if (owmKey.length() > 4) {
+      result += owmKey.substring(0, 4) + "********\",";
+    } else {
+      result += owmKey + "\",";
+    }
+    result += "\"owmlat\":\"" + String(owmLat) + "\",";
+    result += "\"owmlong\":\"" + String(owmLong) + "\",";
+    result += "\"tempunits\":\"";
+    if (temperatureSymbol == 12) {
+      result += "C\",";
+    } else {
+      result += "F\",";
+    }
+    result += "\"tempdisplay\":\"";
+    if (temperatureSource == 0) {
+      result += "dual\",";
+    } else if (temperatureSource == 1) {
+      result += "outside\",";
+    } else {
+      result += "inside\",";
+    }
+    result += "\"tempcorrection\":\"" + String(temperatureCorrection) + "\",";
+    result += "\"exttempinterval\":\"" + String(tempUpdatePeriodExt) + "\",";
+    result += "\"inttempinterval\":\"" + String(tempUpdatePeriod) + "\",";
+
+    result += "\"countmin\":\"" + String(defaultCountdownMin) + "\",";
+    result += "\"countsec\":\"" + String(defaultCountdownSec) + "\",";
+    result += "\"buzzer\":\"";
+    if (useBuzzer) {
+      result += "on\",";
+    } else {
+      result += "off\",";      
+    }
+
+    result += "\"teamleft\":\"" + scoreboardTeamLeft + "\",";
+    result += "\"teamright\":\"" + scoreboardTeamRight + "\",";
+  
+    result += "\"wledip\":\"" + wledAddress + "\",";
+    result += "\"wledpresets\":\"" + String(wledMaxPreset) + "\",";
+   //Colors - nested under [config][colors]
+    result += "\"colors\": {";
+      result += "\"time\":\"" + WebColors[webColorClock] + "\",";
+      result += "\"tempint\":\"" + WebColors[webColorTemperatureInt] + "\",";
+      result += "\"tempext\":\"" + WebColors[webColorTemperatureExt] + "\",";
+      result += "\"countactive\":\"" + WebColors[webColorCountdown] + "\",";
+      result += "\"countpaused\":\"" + WebColors[webColorCountdownPaused] + "\",";
+      result += "\"countfinalmin\":\"" + WebColors[webColorCountdownFinalMin] + "\",";
+      result += "\"scoreleft\":\"" + WebColors[webColorScoreboardLeft] + "\",";
+      result += "\"scoreright\":\"" + WebColors[webColorScoreboardRight] + "\",";
+      result += "\"texttop\":\"" + WebColors[webColorTextTop] + "\",";
+      result += "\"textbottom\":\"" + WebColors[webColorTextBottom] + "\"";
+  result += "}}}";
+  response = 200;
+  server.send(response, "text/html", result);
+
 }
 
 // ----------------------------
@@ -2969,6 +3134,7 @@ void setupWebHandlers() {
   server.on("/togglewled", handleWLEDToggle);
 
   //API URL Calls
+  server.on("/api/state", handleApiState);
   server.on("/api", HTTP_GET, []()
     {
       int queryNum = 0;
@@ -2978,6 +3144,8 @@ void setupWebHandlers() {
           handleApiBrightness(server.arg(i));
         } else if (server.argName(i) == "mode") {
           handleApiMode(server.arg(i));
+        } else if (server.argName(i) == "binaryclock") {
+          handleApiBinary(server.arg(i));
         } else if ((server.argName(i) == "wled") && (useWLED)) {
           handleApiWled(server.arg(i));
         } else if (server.argName(i) == "countdown") {
