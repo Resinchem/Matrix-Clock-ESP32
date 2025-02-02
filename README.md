@@ -40,7 +40,7 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
 
 This repo and the [wiki](https://github.com/Resinchem/Matrix-Clock-ESP32/wiki) cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
 
-YouTube Video (overview): _coming soon_
+YouTube Video (overview): [ESP32 LED Matrix: Multi-Function with FULL WLED and more!](https://youtu.be/nE2EDA_VE_Y)
 
 Written Blog Article (full details): [An ESP32 LED Matrix Clock, Scoreboard, Timer and more with FULL WLED](https://resinchemtech.blogspot.com/2025/01/matrix32.html)
  
