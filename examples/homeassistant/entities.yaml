@@ -193,7 +193,10 @@ rest_command:
     url: 'http://{{states("input_select.matrix32_ip_address")}}/api?texteffect={{ (states("input_select.matrix32_text_effect")[:1]) | int}}'
   matrix32_text_speed:
      url: 'http://{{states("input_select.matrix32_ip_address")}}/api?textspeed={{ states("input_number.matrix32_text_speed") | int}}'
-
+  # This example assumes an entity named "sensor.garden_temp" already exists in Home Assistant.  Replace with your own temperature sensor.
+  matrix32_external_temp:
+     url: 'http://{{states("input_select.matrix32_ip_address")}}/api?tempext={{ states("sensor.garden_temp") | int}}'
+  
 # ============================================
 #  REST commands - get state and update sensors
 # ============================================
@@ -304,6 +307,18 @@ automation:
     actions:
       - action: rest_command.matrix32_text_speed
 
+  # Example of updating matrix outdoor temperature using a Home Assistant sensor (replace 'sensor.garden_temp' with your own sensor name)
+  # Outdoor temperature on the matrix will be updated every time the 'sensor.garden_temp' value changes.  
+  # Matrix external temp settings must be set to use 'Local API' for this to be accepted
+
+  - alias: Matrix32 Update External Temp
+    id: 6385d8ec-577d-47e8-86e4-bccb888a3416
+    triggers:
+      - trigger: state
+        entity_id: sensor.garden_temp
+    actions:
+      - action: rest_command.matrix32_external_temp
+      
 # ==================================
 #  Scripts
 # ==================================

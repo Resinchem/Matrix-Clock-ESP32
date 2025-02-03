@@ -1,7 +1,7 @@
 /* =================================================================
  * MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
- * January, 2025
- * Version 0.24
+ * February, 2025
+ * Version 0.25
  * Copyright ResinChemTech - released under the Apache 2.0 license
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        //Suppress FastLED SPI/bitbanged compiler warnings (only applies after first compile)
 #include <FastLED.h>
 
-#define VERSION "v0.24 (ESP32)"
+#define VERSION "v0.25 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -57,13 +57,16 @@
  * All of these following values can be modified and saved via
  * the web interface and the values below normally do not need to be modified.
  * Using the web settings is the preferred way to change these default values.  
- * Values listed here are just starting values before the config file 
- * is read (or if it doesn't yet exist immediately after initial onboarding) */
+ * Values listed here are just starting values before the config file exists or
+ * if it can't be read.
+ */
 
 String ntpServer = "pool.ntp.org";      // Default server for syncing time
 String owmKey = "NA";                   // OpenWeatherMap API key (can be entered after onboarding via web app)
 String owmLat = "39.8083";              // Your Latitude for OpenWeatherMap (can be entered after onboarding
 String owmLong = "-98.555";             // Your Longitude for OpenWeatherMap (can be entered after onboarding)
+bool tempExtUseApi = false;             // Use local API for external temperature instead of OWM
+bool tempIntUseApi = false;             // Use local API for internal temperature instead of onboard sensor
 
 String timeZone = TIMEZONE;             // Loaded from #define above.  Change #define if you wish to change this value.
 bool useCustomOffsets = false;          // Set to true to use custom offsets instead of timezone (need for some zones that use 1/2 hours - no auto-DST adjustments)
@@ -567,6 +570,18 @@ void readConfigFile() {
           owmKey = json["owm_key"] | "NA";                        // OpenWeatherMap API Key
           owmLat = json["owm_lat"] | "39.8083";                   // Latitude for OWM (stored as string)
           owmLong = json["owm_long"] | "-98.555";                 // Longitude for OWM (stored as string)
+          int useApiExt = json["temp_ext_api"] | 0;               // Use API for external temperature instead of OWM
+          if (useApiExt == 1) {
+            tempExtUseApi = true;
+          } else {
+            tempExtUseApi = false;
+          }
+          int useApiInt = json["temp_int_api"] | 0;               // Use API for internal temperature instead of onboard internal temp sensor
+          if (useApiInt == 1) {
+            tempIntUseApi = true;
+          } else {
+            tempIntUseApi = false;
+          }
           temperatureSymbol = json["temp_symbol"] | 13;           // 12 celcius, 13 fahrenheit
           temperatureSource = json["temp_source"] | 0;            // 0 dual, 1 external only, 2 internal only
           temperatureCorrection = json["temp_correction"] | 0.00; // Correction (in degrees) value to add to internal temp sensor
@@ -724,6 +739,16 @@ void writeConfigFile(bool restart_ESP) {
     doc["owm_key"] = owmKey;
     doc["owm_lat"] = owmLat;
     doc["owm_long"] = owmLong;
+    if (tempExtUseApi) {
+      doc["temp_ext_api"]  = 1;
+    } else {
+      doc["temp_ext_api"]  = 0;
+    }
+    if (tempIntUseApi) {
+      doc["temp_int_api"] = 1;
+    } else {
+      doc["temp_int_api"] = 0;
+    }
     doc["temp_symbol"] = temperatureSymbol;
     doc["temp_source"] = temperatureSource;
     doc["temp_correction"] = temperatureCorrection;
@@ -1233,7 +1258,24 @@ void webMainPage() {
     mainPage += ">\
       <label for=\"sensor\">Dual (both)</label>\
       </td></tr>\
-      </table><table border=\"0\">\
+      </table><br>\
+      <u>Inside Temperature</u> - If API is used, temperature will report 0&deg until update is received<br>\
+      <table border=\"0\">\
+      <tr><td>\
+      Inside Temp Source:\
+      </td><td>\
+      <input type=\"radio\" id=\"sensor\" name=\"tempintapi\" value=\"sensor\"";
+      if (!tempIntUseApi) mainPage += " checked";
+    mainPage += ">\
+      <label for=\"sensor\">Onboard Sensor (AHT20)</label>\
+      </td><td>\
+      <input type=\"radio\" id=\"apiint\" name=\"tempintapi\" value=\"apiint\"";
+      if (tempIntUseApi) mainPage += " checked";
+    mainPage += ">\
+      <label for=\"apiint\">Local API</label>\
+      </td></tr></table><br>\
+      <i>These settings only applicable to the onboard sensor - ignored if local API is used</i>\
+      <table border=\"0\">\
       <tr>\
       <td><label for=\"tempcorrection\">Inside Temp Correction:</label></td>\
       <td><input type=\"number\" style=\"width:4em\" min=\"-10\" max=\"10\" step=\"0.1\" name=\"tempcorrection\" value=\"";
@@ -1246,7 +1288,22 @@ void webMainPage() {
     mainPage += "\">&nbsp;minutes (minimum 1)</td>\  
       </tr>\  
       </table><br>\
-      <u>OpenWeatherMap</u> (outside temp) - Temperature will always report 0&deg with missing/invalid API key\
+      <u>Outside Temperature</u> - Temperature will always report 0&deg until an update is received<br>\
+      <table border=\"0\">\
+      <tr><td>\
+      Outside Temp Source:\
+      </td><td>\
+      <input type=\"radio\" id=\"owm\" name=\"tempextapi\" value=\"owm\"";
+      if (!tempExtUseApi) mainPage += " checked";
+    mainPage += ">\
+      <label for=\"owm\">OpenWeatherMap (OWM)</label>\
+      </td><td>\
+      <input type=\"radio\" id=\"api\" name=\"tempextapi\" value=\"api\"";
+      if (tempExtUseApi) mainPage += " checked";
+    mainPage += ">\
+      <label for=\"api\">Local API</label>\
+      </td></tr></table><br>\
+      <i>These values only applicable if using OWM - ignored if local API is used</i>\
       <table border=\"0\">\
       <tr>\
       <td><label for=\"owmkey\">OWM API Key:&nbsp;&nbsp;</label></td>\
@@ -1263,7 +1320,7 @@ void webMainPage() {
     mainPage += String(owmLong);
     mainPage += "\"></td></tr>\
       <tr>\
-      <td><label for=\"tempupdext\">Outside Refresh Interval:</label></td>\
+      <td><label for=\"tempupdext\">OWM Refresh Interval:</label></td>\
       <td><input type=\"number\" name=\"tempupdext\" min=\"10\" step=\"1\" style=\"width:3em\" value=\"";
     mainPage += String((tempUpdatePeriodExt / 60));
     mainPage += "\">&nbsp;minutes (minimum 10)</td>\
@@ -1822,6 +1879,36 @@ void handleSettingsUpdate() {
         }
       }
     }
+    //Internal temperature source
+    if (server.arg("tempintapi") == "apiint") {
+      if (!tempIntUseApi) {
+        //Set internal temp initially to 0 when first switching to local API and force update
+        internalTemperature = 0;
+        tempUpdateCount = 0;
+      }
+      tempIntUseApi = true;
+    } else {
+      if (tempIntUseApi) {
+        //Force refresh from OWM when switching back from local API
+        tempUpdateCount = 0;
+      }
+      tempIntUseApi = false;
+    }
+    //External temperature source
+    if (server.arg("tempextapi") == "api") {
+      if (!tempExtUseApi) {
+        //Set external temp initially to 0 when first switching to local API and force update
+        externalTemperature = 0;
+        tempUpdateCountExt = 0;
+      }
+      tempExtUseApi = true;
+    } else {
+      if (tempExtUseApi) {
+        //Force refresh from OWM when switching back from local API
+        tempUpdateCountExt = 0;
+      }
+      tempExtUseApi = false;
+    }
     owmKey = server.arg("owmkey");
     if (owmKey == "") owmKey = "NA";
     owmLat = server.arg("owmlat");
@@ -2084,7 +2171,7 @@ void handleSettingsUpdate() {
     message += "</table><br>";
     message += "<u><b>Temperature Default Settings</b></u>";
     message += "<table border=\"0\">";
-    message += "<tr><td>Temperature display:</td><td>";
+    message += "<tr><td>Temperature Units:</td><td>";
     if (temperatureSymbol == 12) {
       message += "Celsius";
     } else if (temperatureSymbol == 13) {
@@ -2105,10 +2192,24 @@ void handleSettingsUpdate() {
 
     message += "<tr><td>Temperature Correction:</td><td>" + String(temperatureCorrection) + "&deg</td></tr>";
     message += "<tr><td>Inside Temp Refresh:</td><td>" + String((tempUpdatePeriod / 60)) + "&nbsp;minute(s)</td></tr>";
-    message += "<tr><td>OWM API Key:</td><td>" + owmKey + "</td></tr>";
-    message += "<tr><td>OWM Latitude:</td><td>" + owmLat + "</td></tr>";
-    message += "<tr><td>OWM Longitude:</td><td>" + owmLong + "</td></tr>";
-    message += "<tr><td>Outside Temp Refresh:</td><td>" + String((tempUpdatePeriodExt / 60)) + "&nbsp;minutes</td></tr>";
+    message += "<tr><td>Outside Temp Source:</td><td>";
+    if (tempExtUseApi) {
+      message += "Local API";
+    } else {
+      message += "OpenWeatherMap (OWM)";
+    }
+    message += "</td></tr>";
+    if (tempExtUseApi) {
+      message += "<tr><td>OWM API Key:</td><td>NA (local API in use)</td></tr>";
+      message += "<tr><td>OWM Latitude:</td><td>NA</td></tr>";
+      message += "<tr><td>OWM Longitude:</td><td>NA</td></tr>";
+      message += "<tr><td>OWM Temp Refresh:</td><td>NA</td></tr>";
+    } else {
+      message += "<tr><td>OWM API Key:</td><td>" + owmKey + "</td></tr>";
+      message += "<tr><td>OWM Latitude:</td><td>" + owmLat + "</td></tr>";
+      message += "<tr><td>OWM Longitude:</td><td>" + owmLong + "</td></tr>";
+      message += "<tr><td>OWM Temp Refresh:</td><td>" + String((tempUpdatePeriodExt / 60)) + "&nbsp;minutes</td></tr>";
+    }
     message += "</table><br>";
  
     message += "<u><b>Countdown Timer Default Settings</b></u><br>";
@@ -2935,6 +3036,47 @@ void handleApiTextSpeed (String value) {
   server.send(response, "text/html", result);
 }
 
+void handleApiIntTemp(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (tempIntUseApi) {
+    if (isValidNumber(value)) {
+      int newTemp = value.toInt();
+      if ((newTemp > -100) && (newTemp < 200)) {
+        internalTemperature = newTemp;
+        //Set refresh counter to zero so that temp updates on next display cycle
+        tempUpdateCount = 0;
+        response = 200;
+        result = "Internal temperature update sent successfully";
+      }
+    }
+  } else {
+    result = "Local API for internal temperature not enabled in settings.  Command ignored.";
+  }
+  server.send(response, "text/html", result);
+
+}
+
+void handleApiExtTemp(String value) {
+  String result = "Invalid command value received: " + value;
+  int response = 400;
+  if (tempExtUseApi) {
+    if (isValidNumber(value)) {
+      int newTemp = value.toInt();
+      if ((newTemp > -100) && (newTemp < 200)) {
+        externalTemperature = newTemp;
+        //Set refresh counter to zero so that temp updates on next display cycle
+        tempUpdateCountExt = 0;
+        response = 200;
+        result = "External temperature update sent successfully";
+      }
+    }
+  } else {
+    result = "Local API for external temperature not enabled in settings.  Command ignored.";
+  }
+  server.send(response, "text/html", result);
+}
+
 void handleApiSystem(String value) {
   String result = "Invalid command value received: " + value;
   int response = 400;
@@ -3028,15 +3170,7 @@ void handleApiState() {
       result += "\"ntpserver\":\"na\",";
       result += "\"timesyncinterval\":\"0\",";
     }
-    //Mask OWM Key
-    result += "\"owmkey\":\"";
-    if (owmKey.length() > 4) {
-      result += owmKey.substring(0, 4) + "********\",";
-    } else {
-      result += owmKey + "\",";
-    }
-    result += "\"owmlat\":\"" + String(owmLat) + "\",";
-    result += "\"owmlong\":\"" + String(owmLong) + "\",";
+    //Temperature settings
     result += "\"tempunits\":\"";
     if (temperatureSymbol == 12) {
       result += "C\",";
@@ -3051,9 +3185,32 @@ void handleApiState() {
     } else {
       result += "inside\",";
     }
+    //Temperature sources
+    result += "\"inttempsource\":\"";
+    if (tempIntUseApi) {
+      result += "api\",";
+    } else {
+      result += "sensor\",";
+    }
     result += "\"tempcorrection\":\"" + String(temperatureCorrection) + "\",";
-    result += "\"exttempinterval\":\"" + String(tempUpdatePeriodExt) + "\",";
     result += "\"inttempinterval\":\"" + String(tempUpdatePeriod) + "\",";
+
+    result += "\"exttempsource\":\"";
+    if (tempExtUseApi) {
+      result += "api\",";
+    } else {
+      result += "owm\",";
+    }
+    //Mask OWM Key
+    result += "\"owmkey\":\"";
+    if (owmKey.length() > 4) {
+      result += owmKey.substring(0, 4) + "********\",";
+    } else {
+      result += owmKey + "\",";
+    }
+    result += "\"owmlat\":\"" + String(owmLat) + "\",";
+    result += "\"owmlong\":\"" + String(owmLong) + "\",";
+    result += "\"exttempinterval\":\"" + String(tempUpdatePeriodExt) + "\",";
 
     result += "\"countmin\":\"" + String(defaultCountdownMin) + "\",";
     result += "\"countsec\":\"" + String(defaultCountdownSec) + "\",";
@@ -3164,6 +3321,10 @@ void setupWebHandlers() {
           handleApiTextEffect(server.arg(i));
         } else if (server.argName(i) == "textspeed") {
           handleApiTextSpeed(server.arg(i));
+        } else if (server.argName(i) == "tempext") {
+          handleApiExtTemp(server.arg(i));
+        } else if (server.argName(i) == "tempint") {
+          handleApiIntTemp(server.arg(i));
         } else if (server.argName(i) == "system") {
           handleApiSystem(server.arg(i)); 
         } else {
@@ -3630,7 +3791,6 @@ void loop() {
       }
 
       if (clockMode == 0) {
-       //For testing binary clock
         if (binaryClock) {
           updateBinaryClock();
         } else { 
@@ -3902,20 +4062,23 @@ void updateTemperature() {
     float ftemp = 0;
     bool isNegative = false;
     bool hasHundreds = false;
-
-    if (aht.startMeasurementReady()) {  
-      ftemp = aht.getTemperature_C();
+    if (tempIntUseApi) {
+       //Local API in use. Just set temp to last passed in value.
+       ctemp = internalTemperature;
+    } else {
+      //Get temperature from onboard sensor
+      if (aht.startMeasurementReady()) {  
+        ftemp = aht.getTemperature_C();
+      }
+      #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
+            Serial.print("Got Temperature: ");
+            Serial.println(ftemp);
+      #endif
+      if (temperatureSymbol == 13)
+        ftemp = (ftemp * 1.8000) + 32.0;
+      ctemp = round(ftemp + temperatureCorrection);
     }
 
-    #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
-          Serial.print("Got Temperature: ");
-          Serial.println(ftemp);
-    #endif
-
-
-    if (temperatureSymbol == 13)
-      ftemp = (ftemp * 1.8000) + 32.0;
-    ctemp = round(ftemp + temperatureCorrection);
     internalTemperature = ctemp;
     if (ctemp < 0) {  //Flip sign and set isNegative to true since byte cannot contain negative num
       ctemp = ctemp * -1;
@@ -3953,14 +4116,16 @@ void updateTemperature() {
   }
 }
 void updateTemperatureExt(bool getData) {
-  //Get external temperature from Open Weather Map
-  float ctemp = -99.9;
+  //External Temperature (only shown if temperatureSource = 0 dual temp or 1 External Only)  
+  float rtemp = -99.9;
+  int ctemp = -99;
   bool isNegative = false;
   bool hasHundreds = false;
-  if (temperatureSource < 2) {
+  if ((temperatureSource < 2) && (!tempExtUseApi)) {
     if ((owmKey == "NA") || (owmKey == "")) {   //No API key defined
       ctemp = 0;
     } else if (getData) {
+      //Get external temperature from Open Weather Map
       String jsonBuffer;
       String serverPath = "https://api.openweathermap.org/data/3.0/onecall?lat=" + owmLat + "&lon=" + owmLong + "&exclude=minutely,hourly,daily,alerts&appid=" + owmKey;
       http.useHTTP10(true);
@@ -3969,15 +4134,15 @@ void updateTemperatureExt(bool getData) {
       if (httpCode > 0) {
         DynamicJsonDocument doc(1024);
         deserializeJson(doc, http.getStream());
-        ctemp = doc["current"]["temp"] | -88.0;
-        externalTemperature = ctemp;
+        rtemp = doc["current"]["temp"] | -88.0;
         //Temperature returned in Kelvin. Convert to C then F
-        if (ctemp > -88.0) {
-          ctemp = (ctemp -273.15);           //celcius
+        if (rtemp > -88.0) {
+          rtemp = (rtemp - 273.15);           //celcius
           if (temperatureSymbol == 13) {
-            ctemp = ((ctemp * 1.8) + 32.0);  //fahrenheit
+            rtemp = ((rtemp * 1.8) + 32.0);  //fahrenheit
           }
         }
+        ctemp = round(rtemp);
       }
       //Reset counter so temp isn't pulled second time
       tempUpdateCountExt = tempUpdatePeriodExt;
@@ -3985,8 +4150,12 @@ void updateTemperatureExt(bool getData) {
       //just refresh display with current data
       ctemp = externalTemperature;
     }
+  } else {
+    //Local API in use.  Just use last passed value
+    ctemp = externalTemperature;
+  }  
+  if (temperatureSource < 2) {
     //Round decimal temperature to integer
-    ctemp = round(ctemp);
     externalTemperature = ctemp;  //save for later non-update refreshes
     if (ctemp < 0) {              //Flip sign and set isNegative to true since byte cannot contain negative num
       ctemp = ctemp * -1;
