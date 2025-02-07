@@ -1,7 +1,7 @@
 /* =================================================================
  * MATRIX32: 400 LED Matrix with 100 LEDs/m for ESP32
  * February, 2025
- * Version 0.25
+ * Version 0.26
  * Copyright ResinChemTech - released under the Apache 2.0 license
  * ================================================================= */
 
@@ -24,7 +24,7 @@
 #define FASTLED_INTERNAL        //Suppress FastLED SPI/bitbanged compiler warnings (only applies after first compile)
 #include <FastLED.h>
 
-#define VERSION "v0.25 (ESP32)"
+#define VERSION "v0.26 (ESP32)"
 #define APPNAME "MATRIX CLOCK"
 #define TIMEZONE "EST+5EDT,M3.2.0/2,M11.1.0/2"        // Set your custom time zone from this list: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 #define GMT_OFFSET -5                                 // Manually set time zone offset hours from GMT (e.g EST = -5) - only used if useCustomOffsets is true below
@@ -78,7 +78,7 @@ byte brightness = 64;                   // Default starting brightness at boot. 
 byte numFont = 1;                       // Default Large number font: 0-Original 7-segment (21 pixels), 1-modern (31 pixels), 2-hybrid (28 pixels)
 byte temperatureSymbol = 13;            // Default temp display: 12=Celcius, 13=Fahrenheit
 byte temperatureSource = 0;             // 0 Dual inside/outside temp, 1 Exterior temp only (provided via OpenWeatherMap), 2 Internal only (ATH20 sensor)
-float temperatureCorrection = 0;        // Temp from RTC module.  Generally runs "hot" due to heat from chip.  Adjust as needed. Does not apply if external source selected.
+float temperatureCorrection = 0;        // Temp correction for AHT20 module.  Generally runs slightly "hot" due to heat from chip.  Adjust as needed via settings.
 byte hourFormat = 12;                   // Change this to 24 if you want default 24 hours format instead of 12
 String scoreboardTeamLeft = "&V";       // Default visitor (left) team name on scoreboard
 String scoreboardTeamRight = "&H";      // Default home (right) team name on scoreboard
@@ -167,6 +167,7 @@ int externalTemperature = 0;              // Will only be used if external temp 
 int internalTemperature = 0;
 long lastReconnectAttempt = 0;
 unsigned long prevTime = 0;
+unsigned long prevAutoTime = 0;           // For auto on/off feature
 bool useWLED = false;                     // Indicates whether secondary WLED controller is present (based on non-zero IP address)
 bool wledStateOn = false;                 // Current state of WLED (can get out of sync if changed via WLED interface)
 byte wledCurPreset = 0;                   // Current active preset (used and set by local pushbuttons)
@@ -181,6 +182,16 @@ unsigned long debounceDelay = 250;          //millisecond delay
 int startButtonState;                       //For tracking state
 int lastButtonState = HIGH;                 //Set initial state (HIGH = not pressed)
 
+//auto On-Off times and settings (v0.26)
+bool autoOnOff = false;
+bool autoOnValid = false;
+bool autoOffValid = false;
+byte autoOffHr = 0;
+byte autoOffMin = 0;
+int autoOffBrightness = 0;
+byte autoOnHr = 0;
+byte autoOnMin = 0;
+int autoOnBrightness = 0;
 
 byte r_val = 255;  // RGB values for randomizing colors when using rainbow effect
 byte g_val = 0;
@@ -567,6 +578,18 @@ void readConfigFile() {
           milliamps = json["max_milliamps"] | 5000;
           brightness = json["led_brightness"] | 64;
           numFont = json["num_font"] | 1;
+          int autoOpt = json["auto_on_off"] | 0;
+          if (autoOpt == 1) {
+            autoOnOff = true;
+          } else {
+            autoOnOff = false;
+          }
+          autoOffHr = json["auto_off_hr"] | 0;
+          autoOffMin = json["auto_off"] | 0;
+          autoOffBrightness = json["auto_off_brightness"] | 0;
+          autoOnHr = json["auto_on_hr"] | 0;
+          autoOnMin = json["auto_on_min"] | 0;
+          autoOnBrightness = json["auto_on_brightness"] | 0;
           owmKey = json["owm_key"] | "NA";                        // OpenWeatherMap API Key
           owmLat = json["owm_lat"] | "39.8083";                   // Latitude for OWM (stored as string)
           owmLong = json["owm_long"] | "-98.555";                 // Longitude for OWM (stored as string)
@@ -736,6 +759,17 @@ void writeConfigFile(bool restart_ESP) {
     doc["max_milliamps"] = milliamps;
     doc["led_brightness"] = brightness;
     doc["num_font"] = numFont;
+    if (autoOnOff) {
+      doc["auto_on_off"] = 1;
+    } else {
+      doc["auto_on_off"] = 0;
+    }
+    doc["auto_off_hr"] = autoOffHr;
+    doc["auto_off_min"] = autoOffMin;
+    doc["auto_off_brightness"] = autoOffBrightness;
+    doc["auto_on_hr"] = autoOnHr;
+    doc["auto_on_min"] = autoOnMin;
+    doc["auto_on_brightness"] = autoOnBrightness;
     doc["owm_key"] = owmKey;
     doc["owm_lat"] = owmLat;
     doc["owm_long"] = owmLong;
@@ -1133,6 +1167,45 @@ void webMainPage() {
     mainPage += ">\
       <label for=\"hybrid\">Hybrid</label>\
       </td>\
+      </tr></table><br>";
+
+    mainPage += "<table border=\"0\"><tr>\
+      <td>Auto On/Off:</td>\
+      <td style=\"width: 5%\">&nbsp;<td>\
+      <td><input type=\"radio\" id=\"autoon\" name=\"autoonoff\" value=\"1\"";
+    if (autoOnOff) mainPage += " checked";
+    mainPage += ">\
+      <label for=\"autoon\">Enabled</label>\
+      </td><td>\
+      <td><input type=\"radio\" id=\"autooff\" name=\"autoonoff\" value=\"0\"";
+    if (!autoOnOff) mainPage += " checked";
+    mainPage += ">Disabled<br>\
+      </td></tr></table>\
+      <i>Enter on/off times in 24-hour (hh:mm) format.  Ignored if Auto On/Off is disabled.</i><br><br>\
+      <table border=\"0\"><tr>\
+      <td>Auto-Off (dim) Time:</td>\
+      <td><input type=\"number\" name=\"autooffhr\" style=\"width:3em\" min=\"0\" max=\"23\" step=\"1\" value=\"";
+    if (autoOffHr < 10) mainPage += "0";
+    mainPage += String(autoOffHr) + "\">:\
+      <input type=\"number\" name=\"autooffmin\" style=\"width:3em\" min=\"0\" max=\"59\" step=\"1\" value=\"";
+    if (autoOffMin < 10) mainPage += "0";
+    mainPage += String(autoOffMin) + "\">&nbsp;</td>\
+      <td><label for=\"autooffbright\">&nbsp;Off Brightness (0-255):</td>\
+      <td><input type=\"number\" name=\"autooffbright\" style=\"width:4em\" min=\"0\" max=\"255\" step=\"1\" value=\"";
+    mainPage += String(autoOffBrightness) + "\">";
+    mainPage += "</td>\
+      </tr><tr>\
+      <td>Auto-On (brighten) Time:</td>\
+      <td><input type=\"number\" name=\"autoonhr\" style=\"width:3em\" min=\"0\" max=\"23\" step=\"1\" value=\"";
+    if (autoOnHr < 10) mainPage += "0";
+    mainPage += String(autoOnHr) + "\">:\
+      <input type=\"number\" name=\"autoonmin\" style=\"width:3em\" min=\"0\" max=\"59\" step=\"1\" value=\"";
+    if (autoOnMin < 10) mainPage += "0";
+    mainPage += String(autoOnMin) + "\">&nbsp;</td>\
+      <td><label for=\"autoonbright\">&nbsp;On Brightness (0-255):</td>\
+      <td><input type=\"number\" name=\"autoonbright\" style=\"width:4em\" min=\"0\" max=\"255\" step=\"1\" value=\"";
+    mainPage += String(autoOnBrightness) + "\">";
+    mainPage += "</td>\
       </tr></table><br>";
 
     mainPage += "<b><u>Clock & Time Default Settings</u></b><br><br>";
@@ -1863,6 +1936,15 @@ void handleSettingsUpdate() {
     if ((server.arg("owmkey") != owmKey) || (server.arg("owmlat") != owmLat) || (server.arg("owmlong") != owmLong) || ((server.arg("tempsymbol").toInt()) != temperatureSymbol)) {
       updateExtTemp = true;
     }
+    //Auto On-Off option and settings
+    autoOnOff = (server.arg("autoonoff").toInt() == 1);
+    autoOffHr = server.arg("autooffhr").toInt();
+    autoOffMin = server.arg("autooffmin").toInt();
+    autoOffBrightness = server.arg("autooffbright").toInt();
+    autoOnHr = server.arg("autoonhr").toInt();
+    autoOnMin = server.arg("autoonmin").toInt();
+    autoOnBrightness = server.arg("autoonbright").toInt();
+
     //Check for any changes related to syncing time/time server
     if (autoSync) {
       if ((server.arg("ntpserver") != ntpServer) || (server.arg("timezone") != timeZone) || ((server.arg("syncinterval").toInt()) != autoSyncInterval)) {  
@@ -1944,6 +2026,17 @@ void handleSettingsUpdate() {
       }
       syncTime();
     }
+    //Update flags if both off and a change enables one or both
+    setAutoStates();
+    /*
+    if (autoOnOff) {
+      autoOffValid = ((autoOffHr > 0) && (autoOffMin > 0)); 
+      autoOnValid = ((autoOnHr > 0) && (autoOffMin > 0)); 
+    } else {
+      autoOffValid = false;
+      autoOnValid = false;
+    }
+    */
     scoreboardTeamLeft = server.arg("scoreteamleft");    //string
     scoreboardTeamRight = server.arg("scoreteamright");  //string
     textTop = server.arg("texttop");
@@ -2115,8 +2208,46 @@ void handleSettingsUpdate() {
         message += "&nbsp;</td></tr>";
         break;
     }
-    message += "</table><br>";
+    //message += "</table><table border=\"0\">";
+    message += "<tr><td>Auto On/Off:</td>";
+    if (autoOnOff) {
+      message += "<td>Enabled</td>";
+    } else {
+      message += "<td>Disabled</td>";
+    }
+    message += "</tr><tr>";
+    message += "<td>Off (dim) Time:</td><td>";
+    if (autoOnOff) {
+      if (autoOffHr < 10) {
+        message += "0";
+      }
+      message += String(autoOffHr) + ":";
+      if (autoOffMin < 10) {
+        message += "0";
+      }
+      message += String(autoOffMin); 
+      message += "&nbsp;&nbsp;&nbsp;(Brightness:&nbsp;" + String(autoOffBrightness) + ")</td>"; 
+    } else {
+      message += "&nbsp;NA (disabled)</td>";
+    }
+    message += "</tr><tr>";
 
+    message += "<td>On (brighten) Time:</td><td>";
+    if (autoOnOff) {
+      if (autoOnHr < 10) {
+        message += "0";
+      }
+      message += String(autoOnHr) + ":";
+      if (autoOnMin < 10) {
+        message += "0";
+      }
+      message += String(autoOnMin); 
+      message += "&nbsp;&nbsp;&nbsp;(Brightness:&nbsp;" + String(autoOnBrightness) + ")</td>";
+    } else {
+      message += "&nbsp;NA (disabled)</td>";
+    }
+    message += "</tr></table><br>";
+    
     message += "<u><b>Clock & Time Default Settings</b></u><br>";
     message += "<table border=\"0\">";
     message += "<tr><td>Binary Clock Display:</td><td>";
@@ -3151,7 +3282,31 @@ void handleApiState() {
     result += "\"maxmilliamps\":\"" + String(milliamps) + "\",";
     result += "\"bootmode\":\"" + String(defaultClockMode) + "\",";
     result += "\"numfont\":\"" + String(numFont) + "\",";
-    result += "\"hours\":\"" + String(hourFormat) + "\",";
+    result += "\"autoonoff\":\"";
+    if (autoOnOff) {
+      result += "on";
+    } else {
+      result += "off";
+    }
+    result += "\",";
+    result += "\"autoofftime\":\"";
+    if (autoOffHr < 10) result += "0";
+    result += String(autoOffHr);  
+    result += ":";
+    if (autoOffMin < 10) result += "0";
+    result += String(autoOffMin);
+    result += "\",";
+    result += "\"autooffbrightness\":\"" + String(autoOffBrightness) + "\",";
+
+    result += "\"autoontime\":\"";
+    if (autoOnHr < 10) result += "0";
+    result += String(autoOnHr);  
+    result += ":";
+    if (autoOnMin < 10) result += "0";
+    result += String(autoOnMin);
+    result += "\",";
+    result += "\"autoonbrightness\":\"" + String(autoOnBrightness) + "\",";
+    result += "\"hoursformat\":\"" + String(hourFormat) + "\",";
     if (useCustomOffsets) {
       result += "\"timezone\":\"custom\",";
       result += "\"gmtoffset\":\"" + String(gmtOffsetHours) + "\",";
@@ -3568,6 +3723,8 @@ void setup() {
     fill_solid(LEDs, NUM_LEDS, CRGB::Black);
     FastLED.show();
 
+    //Set initial auto on/off modes
+    setAutoStates();
     //Update temperatures if showing clock (and not binary mode)
     if ((clockMode == 0) && (!binaryClock)) {
       updateTemperature();
@@ -3815,6 +3972,14 @@ void loop() {
       FastLED.setBrightness(brightness);
       FastLED.show();
     }
+    //Check for auto off/on - only applicable when WLED is off (v0.26)
+    if ((autoOnOff) && (!wledStateOn) && ((autoOnValid) || (autoOffValid))) {
+      unsigned long autoMillis = millis();
+      if ((autoMillis - prevAutoTime) >= 1000) {
+        prevAutoTime = autoMillis;
+        checkAutoOnOff();
+      }
+    }
   }
 }
 
@@ -4053,6 +4218,29 @@ void updateCountdown() {
     }
     return;
   }
+}
+
+void checkAutoOnOff() {
+  //Check that auto-off isn't already active and hr/min aren't both 0
+  if (autoOnOff) {
+    int hour = rtc.getHour(true);
+    int mins = rtc.getMinute();
+    if (autoOffValid) {  
+      if ((hour == autoOffHr) && (mins == autoOffMin)) {
+        brightness = autoOffBrightness;
+        if (brightness == 0) ledsOn = false;
+        return;
+      }
+    }
+    if (autoOnValid) {
+      if ((hour == autoOnHr) && (mins == autoOnMin)) {
+        brightness = autoOnBrightness;
+        if (brightness > 0) ledsOn = true;
+        return;
+      }
+    }
+  }
+  return;
 }
 
 void updateTemperature() {
@@ -4899,4 +5087,16 @@ boolean isValidNumber(String str){
     if(isDigit(str.charAt(i))) return true;
   }
   return false;
+}
+
+void setAutoStates() {
+  //Called from setup and any auto on/off time settings changed
+    if (autoOnOff) {
+      autoOffValid = ((autoOffHr > 0) || (autoOffMin > 0)); 
+      autoOnValid = ((autoOnHr > 0) || (autoOnMin > 0));
+    } else {
+      autoOffValid = false;
+      autoOnValid = false;
+    }
+
 }
