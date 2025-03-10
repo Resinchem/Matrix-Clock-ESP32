@@ -38,7 +38,9 @@ This 400 WS2812b LED matrix display uses an ESP32 to produce the following featu
   - Auto-switching between controllers.  Show WLED when WLED is on and show the clock when WLED is off
   - Microphone for WLED audio-reactive effects
 
-**Note**: _The firmware is specifically designed for WS2812b LED strips in a 25x16 matrix layout.  To use other types of LEDs or to use a matrix with other dimensions, substantial changes to the source code will be needed!_  This is up to you to complete, as I will not be creating compiled firmware for other types of LEDs or dimensions.
+### **Note**: _The firmware is specifically designed for WS2812b LED strips in a 25x16 matrix layout.  To use other types of LEDs or to use a matrix with other dimensions, substantial changes to the source code will be needed!_  This is up to you to complete, as I will not be creating compiled firmware for other types of LEDs or dimensions.
+
+See the /docs folder for information on how letters/numbers are 'overlaid' on the matrix.  Different dimensions or layout of the LEDs will require that all those overlays be remapped and the source code changed for the updated layout.
 
 This repo and the [wiki](https://github.com/Resinchem/Matrix-Clock-ESP32/wiki) cover installation, configuration and use of the firmware.  It does not cover the physical build of the controller(s), wiring or the enclosure/case.  For build and wiring details, please refer to the following source:
 
