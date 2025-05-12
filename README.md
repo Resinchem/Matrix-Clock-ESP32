@@ -47,4 +47,9 @@ This repo and the [wiki](https://github.com/Resinchem/Matrix-Clock-ESP32/wiki) c
 YouTube Video (overview): [ESP32 LED Matrix: Multi-Function with FULL WLED and more!](https://youtu.be/nE2EDA_VE_Y)
 
 Written Blog Article (full details): [An ESP32 LED Matrix Clock, Scoreboard, Timer and more with FULL WLED](https://resinchemtech.blogspot.com/2025/01/matrix32.html)
+
+It takes substantial time, effort and cost to develop and maintain this repository. If you find it helpful and would like to say 'thanks', please consider supporting this project and future development:
+
+<a href="https://www.buymeacoffee.com/resinchemtech" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
  
