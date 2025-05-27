@@ -5,6 +5,8 @@ _Letters.pdf & Numbers.pdf_ - Shows how the various letters, numbers and symbols
 
 _Pixel Postions.pdf_ - Shows where the display zones are for the different display modes
 
+_TimeZones.md_ - List of POSIX values for various time zones (current as of publication time)
+
 The remaining three .jpg files are simply larger versions of wiring diagrams from the written blog article. They are **_not_** meant to be complete build instructions.  The written guide should be used as it contains much more information, including:
 
 - Step-by-step instructions for building the matrix, controller(s) and control box
